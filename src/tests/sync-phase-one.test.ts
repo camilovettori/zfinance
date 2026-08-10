@@ -29,9 +29,13 @@ const remote = (entityType: SyncEntityType, payload: unknown, version = 1, delet
 class MemoryProvider implements SyncProvider {
   rows = new Map<string, TypedRemote>()
   failCount = 0
+  pushCount = 0
+  pullCount = 0
+  pullError: Error | null = null
   handler: SyncEventHandler | null = null
 
   async push(operations: SyncOperation[]): Promise<SyncPushResult> {
+    this.pushCount += 1
     const result: SyncPushResult = { acceptedIds: [], accepted: [], conflicts: [], failed: [] }
     for (const operation of operations) {
       if (this.failCount > 0) {
@@ -56,7 +60,11 @@ class MemoryProvider implements SyncProvider {
     return result
   }
 
-  async pull(cursor?: string) { return { cursor: cursor ?? new Date().toISOString(), changes: [...this.rows.values()] } }
+  async pull(cursor?: string) {
+    this.pullCount += 1
+    if (this.pullError) throw this.pullError
+    return { cursor: cursor ?? new Date().toISOString(), changes: [...this.rows.values()] }
+  }
   async subscribe(handler: SyncEventHandler) { this.handler = handler; return () => { this.handler = null } }
   emit(value: TypedRemote) { this.handler?.(value) }
 }
@@ -212,6 +220,43 @@ describe('local-first queue and optimistic versions', () => {
 })
 
 describe('pull and Realtime reconciliation', () => {
+  it('opens a populated remote household on a new origin without uploading and notifies React', async () => {
+    const remoteHouseholdId = crypto.randomUUID()
+    const remoteHousehold = { ...value.household, id: remoteHouseholdId, name: 'Remote household' }
+    const remoteAccount = { ...value.accounts[0], id: crypto.randomUUID(), householdId: remoteHouseholdId, name: 'Remote account' }
+    provider.rows.set(`households:${remoteHouseholdId}`, remote('households', remoteHousehold, 1))
+    provider.rows.set(`financial_accounts:${remoteAccount.id}`, remote('financial_accounts', remoteAccount, 1))
+    const changed: AppState[] = []
+    coordinator = new SyncCoordinator(db, provider, {
+      load: async () => value,
+      save: async (next) => { value = next; return next },
+      changed: (next) => { changed.push(next); value = next },
+    }, remoteHouseholdId, 'new-origin-device', 3)
+
+    const opened = await coordinator.openRemoteHousehold(value)
+
+    expect(provider.pullCount).toBe(1)
+    expect(provider.pushCount).toBe(0)
+    expect(opened?.household.id).toBe(remoteHouseholdId)
+    expect(opened?.accounts.map((account) => account.name)).toEqual(['Remote account'])
+    expect(opened?.transactions).toEqual([])
+    expect(changed.at(-1)?.household.id).toBe(remoteHouseholdId)
+    expect(await coordinator.isReady()).toBe(true)
+  })
+
+  it('does not mark a remote household ready when its initial pull fails', async () => {
+    const remoteHouseholdId = crypto.randomUUID()
+    provider.pullError = new Error('network failed')
+    coordinator = new SyncCoordinator(db, provider, {
+      load: async () => value,
+      save: async (next) => { value = next; return next },
+    }, remoteHouseholdId, 'new-origin-device', 3)
+
+    await expect(coordinator.openRemoteHousehold(value)).rejects.toThrow('network failed')
+    expect(provider.pushCount).toBe(0)
+    expect(await coordinator.isReady()).toBe(false)
+  })
+
   it('initial pull applies remote rows by entity', async () => {
     const item = { ...value.transactions[0], id: crypto.randomUUID(), title: 'Pulled', amountCents: 2500, transactionDate: '2026-08-20' }
     provider.rows.set(`transactions:${item.id}`, remote('transactions', item, 1))

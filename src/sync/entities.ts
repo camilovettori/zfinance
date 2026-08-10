@@ -9,6 +9,7 @@ import type {
   RecurringRule,
   Transaction,
 } from '@/domain/model'
+import { createBlankState } from '@/domain/seed'
 import type { RemoteEntity, SyncEntityType, SyncOperation } from './contracts'
 
 const id = z.string().min(1)
@@ -151,6 +152,37 @@ export function applyRemoteEntity(state: AppState, remote: RemoteEntity): AppSta
       break
   }
   return next
+}
+
+export function buildRemoteHouseholdState(householdId: string, changes: RemoteEntity[], deviceState?: AppState): AppState {
+  const householdRecord = changes.find((remote) => remoteEntityType(remote) === 'households' && remote.id === householdId && !remote.deletedAt)
+  if (!householdRecord) throw new Error('The selected remote household is unavailable.')
+  if (changes.some((remote) => remote.householdId !== householdId)) throw new Error('Remote household data was mixed across households.')
+
+  const blank = createBlankState()
+  let snapshot: AppState = {
+    ...blank,
+    onboardingCompleted: true,
+    household: { ...blank.household, id: householdId },
+    members: [],
+    accounts: [],
+    categories: [],
+    transactions: [],
+    recurringRules: [],
+    settings: {
+      ...blank.settings,
+      theme: deviceState?.settings.theme ?? blank.settings.theme,
+      privacyMode: deviceState?.settings.privacyMode ?? blank.settings.privacyMode,
+      hideSensitiveValues: deviceState?.settings.hideSensitiveValues ?? blank.settings.hideSensitiveValues,
+      pinEnabled: deviceState?.settings.pinEnabled ?? blank.settings.pinEnabled,
+      appLocked: deviceState?.settings.appLocked ?? blank.settings.appLocked,
+      lastBackupAt: deviceState?.settings.lastBackupAt,
+      backupDirectory: deviceState?.settings.backupDirectory,
+    },
+  }
+  for (const remote of changes) snapshot = applyRemoteEntity(snapshot, remote)
+  if (snapshot.household.id !== householdId) throw new Error('Remote household identity did not match the selection.')
+  return snapshot
 }
 
 export type TypedRemoteEntity = RemoteEntity & { entityType: SyncEntityType }

@@ -3,7 +3,7 @@ import type { AppState } from '@/domain/model'
 import type { SyncConflict, SyncEntityType, SyncOperation, SyncStatus } from '@/sync/contracts'
 
 export type AppStateRecord = {
-  id: 'current'
+  id: string
   schemaVersion: number
   payload: AppState
   updatedAt: string
@@ -61,6 +61,15 @@ export class HomeCoinWebDatabase extends Dexie {
       migrationState: 'key, completedAt',
     })
     this.version(2).stores({
+      appState: 'id, updatedAt, schemaVersion',
+      syncQueue: 'id, householdId, entityType, entityId, status, createdAt, nextAttemptAt, [status+createdAt]',
+      metadata: 'key, updatedAt',
+      migrationState: 'key, completedAt',
+      entitySyncMetadata: 'key, householdId, entityType, entityId, status, updatedAt, [householdId+entityType]',
+      syncConflicts: 'id, operationId, householdId, entityType, entityId, status, createdAt',
+      syncMigrations: 'id, householdId, status, createdAt',
+    })
+    this.version(3).stores({
       appState: 'id, updatedAt, schemaVersion',
       syncQueue: 'id, householdId, entityType, entityId, status, createdAt, nextAttemptAt, [status+createdAt]',
       metadata: 'key, updatedAt',

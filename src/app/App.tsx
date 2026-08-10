@@ -82,7 +82,17 @@ import type { AppState, FinancialGoal, HouseholdMember, RecurrenceFrequency, Rec
 import { fromIsoDate, todayIso, toIsoDate } from '@/lib/date'
 import { AuthService } from '@/auth/auth-service'
 import { loadState, recordBackup, saveState } from '@/services/storage'
-import { enqueueSyncChanges, registerSyncedStateListener, syncConfiguration, getSupabaseClient } from '@/sync'
+import {
+  deactivateSyncRuntime,
+  enqueueSyncChanges,
+  getSupabaseClient,
+  getSyncStatus,
+  registerSyncedStateListener,
+  restoreActiveSyncRuntime,
+  subscribeSyncStatus,
+  syncConfiguration,
+  type CloudSyncSnapshot,
+} from '@/sync'
 import { MonthlyPlannerSummary, MonthlyPlannerView, PlannerSavingsSummary } from './MonthlyPlanner'
 import { DesktopNavigation } from './navigation/DesktopNavigation'
 import { MobileBottomNavigation } from './navigation/MobileBottomNavigation'
@@ -98,6 +108,22 @@ type RecurrenceChoice = 'once' | 'weekly' | 'fortnightly' | 'monthly' | 'yearly'
 type BillFilter = 'all' | 'pay' | 'receive' | 'overdue'
 type ActivityFilter = 'all' | 'income' | 'expense'
 type RecurringTab = 'income' | 'expense'
+
+const privateSyncLabel = (sync: CloudSyncSnapshot) => {
+  if (sync.status === 'synced') return 'Private • shared • synced'
+  if (sync.status === 'connecting' || sync.status === 'syncing') return 'Private • shared • connecting'
+  if (sync.status === 'offline') return 'Private • shared • offline'
+  if (sync.status === 'changes-waiting') return 'Private • shared • pending'
+  if (sync.status === 'error' || sync.status === 'failed' || sync.status === 'conflict') return 'Private • shared • error'
+  return 'Private • local'
+}
+
+const persistenceSyncLabel = (sync: CloudSyncSnapshot) => {
+  if (sync.status === 'synced') return 'Synced'
+  if (sync.status === 'connecting' || sync.status === 'syncing') return 'Connecting'
+  if (sync.status === 'error' || sync.status === 'failed' || sync.status === 'conflict') return 'Sync error'
+  return 'Saved locally'
+}
 
 type DeleteDialogState =
   | { kind: 'bills'; items: SimpleItem[] }
@@ -538,6 +564,7 @@ function ItemRow({
 function App() {
   const [state, setState] = useState<AppState | null>(null)
   const [loading, setLoading] = useState(true)
+  const [cloudSync, setCloudSync] = useState<CloudSyncSnapshot>(getSyncStatus())
   const [authSession, setAuthSession] = useState<Session | null | undefined>(
     syncConfiguration.enabled && !isDesktopRuntime() ? undefined : null,
   )
@@ -624,6 +651,8 @@ function App() {
     return () => registerSyncedStateListener(null)
   }, [])
 
+  useEffect(() => subscribeSyncStatus(setCloudSync), [])
+
   useEffect(() => {
     if (!syncConfiguration.enabled || isDesktopRuntime()) return
 
@@ -640,6 +669,17 @@ function App() {
       unsubscribe()
     }
   }, [])
+
+  useEffect(() => {
+    if (!syncConfiguration.enabled || isDesktopRuntime() || loading || authSession === undefined) return
+    if (!authSession) {
+      deactivateSyncRuntime()
+      return
+    }
+    const client = getSupabaseClient()
+    if (!client) return
+    void restoreActiveSyncRuntime(client).catch((error) => console.error('Failed to restore the active shared household.', error))
+  }, [authSession, loading])
 
   useEffect(() => () => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
@@ -2986,7 +3026,7 @@ function App() {
           totals={plannerCycleSummary}
           money={(value) => money(value, state)}
         />
-        <div className="report-footer">HomeCoin • Interactive financial-cycle planning • Saved locally</div>
+        <div className="report-footer">HomeCoin • Interactive financial-cycle planning • {persistenceSyncLabel(cloudSync)}</div>
       </Card>
     </section>
   )
@@ -3171,7 +3211,7 @@ function App() {
         <DesktopNavigation activeSection={activeSection} onNavigate={setActiveSection} />
         <div className="sidebar-footer">
           <p>{new Intl.DateTimeFormat(state.settings.locale, { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}</p>
-          <span>Private • local • offline</span>
+          <span>{privateSyncLabel(cloudSync)}</span>
         </div>
       </aside> : null}
 

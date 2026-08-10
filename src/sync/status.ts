@@ -1,4 +1,4 @@
-export type CloudSyncStatus = 'local-only' | 'offline' | 'syncing' | 'synced' | 'changes-waiting' | 'failed' | 'conflict'
+export type CloudSyncStatus = 'local-only' | 'connecting' | 'offline' | 'syncing' | 'synced' | 'changes-waiting' | 'failed' | 'error' | 'conflict'
 
 export interface CloudSyncSnapshot {
   status: CloudSyncStatus
@@ -20,4 +20,3 @@ export const subscribeSyncStatus = (listener: (value: CloudSyncSnapshot) => void
   listener(snapshot)
   return () => { listeners.delete(listener) }
 }
-

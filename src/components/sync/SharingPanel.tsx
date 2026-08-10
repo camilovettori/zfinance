@@ -5,7 +5,7 @@ import { serializeBackup } from '@/domain/backup'
 import type { AppState, Household, HouseholdMember } from '@/domain/model'
 import { isTauriRuntime } from '@/persistence/runtime'
 import { webDatabase } from '@/persistence/web/db'
-import { saveState } from '@/services/storage'
+import { getActiveHouseholdId, saveState } from '@/services/storage'
 import { buildInvitationUrl } from '@/sync/invite-url'
 import {
   activateSyncRuntime,
@@ -109,9 +109,12 @@ export function SharingPanel({ state, onStateChanged, authOnly = false }: Props)
 
   const loadHouseholds = async () => {
     if (!householdsRepository) return
-    const values = await householdsRepository.list()
+    const [values, persistedId] = await Promise.all([householdsRepository.list(), getActiveHouseholdId()])
     setHouseholds(values)
-    setActive((current) => current ? values.find((item) => item.household.id === current.household.id) ?? values[0] ?? null : values[0] ?? null)
+    setActive((current) => {
+      const preferredId = current?.household.id ?? persistedId ?? state.household.id
+      return values.find((item) => item.household.id === preferredId) ?? values[0] ?? null
+    })
   }
 
   useEffect(() => {
@@ -136,11 +139,11 @@ export function SharingPanel({ state, onStateChanged, authOnly = false }: Props)
     if (!active || !client || !householdsRepository) return
     let cancelled = false
     void (async () => {
-      const coordinator = await activateSyncRuntime(client, active.household.id)
+      const coordinator = await activateSyncRuntime(client, active.household.id, { openRemoteIfNeeded: true })
       const [isReady, memberList] = await Promise.all([coordinator.isReady(), householdsRepository.members(active.household.id)])
       if (cancelled) return
       setReady(isReady); setMembers(memberList)
-      const unresolved = await webDatabase.syncConflicts.where('status').equals('unresolved').toArray()
+      const unresolved = await webDatabase.syncConflicts.where('householdId').equals(active.household.id).filter((item) => item.status === 'unresolved').toArray()
       setConflicts(unresolved.map(({ id, entityType, entityId }) => ({ id, entityType, entityId })))
     })().catch((caught) => { if (!cancelled) setError(messageOf(caught)) })
     return () => { cancelled = true }
@@ -174,7 +177,7 @@ export function SharingPanel({ state, onStateChanged, authOnly = false }: Props)
 
   return <div className="sync-panel">
     <div className="sync-panel-heading"><div><strong>Shared household</strong><p>{session.user.email}</p></div><button className="button-ghost" disabled={busy} onClick={() => void run(async () => { deactivateSyncRuntime(); await auth.signOut(); setSessionExpired(false) })}>Log out</button></div>
-    {households.length ? <><label>Household<select className="select" value={active?.household.id ?? ''} onChange={(event) => setActive(households.find((item) => item.household.id === event.target.value) ?? null)}>{households.map((item) => <option key={item.household.id} value={item.household.id}>{item.household.name}</option>)}</select></label><button className="button-secondary" disabled={busy} onClick={() => setCreatingHousehold((value) => !value)}>Create another household</button></> : null}
+    {households.length ? <><label>Household<select className="select" value={active?.household.id ?? ''} onChange={(event) => { setReady(false); setMigration(null); setActive(households.find((item) => item.household.id === event.target.value) ?? null) }}>{households.map((item) => <option key={item.household.id} value={item.household.id}>{item.household.name}</option>)}</select></label><button className="button-secondary" disabled={busy} onClick={() => setCreatingHousehold((value) => !value)}>Create another household</button></> : null}
     {!households.length || creatingHousehold ? <div className="sync-form-grid">
       <label>Household name<input className="input" value={householdName} onChange={(event) => setHouseholdName(event.target.value)} /></label>
       <label>Your name<input className="input" value={ownerName} onChange={(event) => setOwnerName(event.target.value)} /></label>
@@ -219,7 +222,7 @@ export function SharingPanel({ state, onStateChanged, authOnly = false }: Props)
         </div>}
       </div> : <div className="sync-ready"><strong>Sync active</strong><p>Push/pull is ready. Realtime supplements it after reconciliation.</p><button className="button-secondary" disabled={busy} onClick={() => void run(async () => {
         const coordinator = activeSyncCoordinator(); await coordinator?.retryFailed(); await coordinator?.pull()
-        const unresolved = await webDatabase.syncConflicts.where('status').equals('unresolved').toArray()
+        const unresolved = await webDatabase.syncConflicts.where('householdId').equals(active.household.id).filter((item) => item.status === 'unresolved').toArray()
         setConflicts(unresolved.map(({ id, entityType, entityId }) => ({ id, entityType, entityId })))
       })}>Sync now</button></div>}
 

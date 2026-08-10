@@ -5,6 +5,7 @@ import App from '@/app/App'
 import { createDemoState } from '@/domain/seed'
 import type { AppState } from '@/domain/model'
 import { todayIso } from '@/lib/date'
+import { setAppStateRepositoryForTests } from '@/persistence'
 
 const fakeSession = {
   user: {
@@ -33,6 +34,8 @@ const authMocks = vi.hoisted(() => ({
   requestPasswordReset: vi.fn(),
   updatePassword: vi.fn(),
   getSupabaseClient: vi.fn(),
+  restoreActiveSyncRuntime: vi.fn(),
+  deactivateSyncRuntime: vi.fn(),
 }))
 
 vi.mock('@/auth/auth-service', () => ({
@@ -52,6 +55,8 @@ vi.mock('@/sync', async () => {
   return {
     ...actual,
     getSupabaseClient: authMocks.getSupabaseClient,
+    restoreActiveSyncRuntime: authMocks.restoreActiveSyncRuntime,
+    deactivateSyncRuntime: authMocks.deactivateSyncRuntime,
   }
 })
 
@@ -172,10 +177,13 @@ describe('HomeCoin app shell', () => {
     authMocks.requestPasswordReset.mockReset()
     authMocks.updatePassword.mockReset()
     authMocks.getSupabaseClient.mockReset().mockReturnValue(null)
+    authMocks.restoreActiveSyncRuntime.mockReset().mockResolvedValue(null)
+    authMocks.deactivateSyncRuntime.mockReset()
   })
 
   afterEach(() => {
     window.localStorage.clear()
+    Reflect.deleteProperty(window, '__TAURI_INTERNALS__')
   })
 
   it('uses a small-screen onboarding wizard that preserves answers when going back', async () => {
@@ -201,6 +209,31 @@ describe('HomeCoin app shell', () => {
     expect(await screen.findByRole('button', { name: 'Log in' })).toBeTruthy()
     expect(container.querySelector('.sync-panel')).toBeTruthy()
     expect(screen.queryByRole('heading', { name: /^Good (morning|afternoon|evening), / })).toBeNull()
+  })
+
+  it('restores the active sync runtime after login without opening Settings', async () => {
+    authMocks.getSupabaseClient.mockReturnValue({})
+    render(<App />)
+
+    await waitFor(() => expect(authMocks.restoreActiveSyncRuntime).toHaveBeenCalledOnce())
+    expect(screen.queryByRole('heading', { name: 'Settings' })).toBeNull()
+  })
+
+  it('keeps Tauri local-only without restoring a cloud runtime', async () => {
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { value: {}, configurable: true })
+    const desktopState = createDemoState()
+    setAppStateRepositoryForTests({
+      load: async () => desktopState,
+      save: async (next) => next,
+      clear: async () => undefined,
+      getMetadata: async () => ({ source: 'sqlite', schemaVersion: desktopState.schemaVersion, updatedAt: null, migratedFromLocalStorage: false }),
+    })
+    authMocks.getSupabaseClient.mockReturnValue({})
+    render(<App />)
+
+    await screen.findByRole('heading', { name: /^Good (morning|afternoon|evening), Our Home$/ })
+    expect(authMocks.restoreActiveSyncRuntime).not.toHaveBeenCalled()
+    Reflect.deleteProperty(window, '__TAURI_INTERNALS__')
   })
 
   it('opens the dashboard and navigates to savings', async () => {

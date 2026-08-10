@@ -3,6 +3,7 @@ import {
   getAppStateRepository,
   isTauriRuntime,
   TauriAppStateRepository,
+  WebIndexedDbAppStateRepository,
   type PersistenceStatus,
 } from '@/persistence'
 
@@ -52,6 +53,27 @@ export async function saveState(state: AppState) {
     publish('error')
     throw error
   }
+}
+
+const webRepository = () => {
+  const repository = getAppStateRepository()
+  return repository instanceof WebIndexedDbAppStateRepository ? repository : null
+}
+
+export async function loadHouseholdState(householdId: string) {
+  return await webRepository()?.loadHousehold(householdId) ?? null
+}
+
+export async function activateHouseholdState(householdId: string) {
+  return await webRepository()?.activateHousehold(householdId) ?? null
+}
+
+export async function getActiveHouseholdId() {
+  return await webRepository()?.getActiveHouseholdId() ?? null
+}
+
+export async function setActiveHouseholdId(householdId: string) {
+  await webRepository()?.setActiveHouseholdId(householdId)
 }
 
 const desktopRepository = () => {

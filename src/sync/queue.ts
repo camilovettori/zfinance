@@ -15,7 +15,7 @@ export class IndexedDbSyncQueue {
   }
 
   async enqueueCoalesced(operation: Omit<SyncOperation, 'status' | 'attempts'>) {
-    const existing = (await this.pendingForEntity(operation.entityType, operation.entityId))
+    const existing = (await this.pendingForEntity(operation.entityType, operation.entityId, operation.householdId))
       .find((item) => item.status === 'pending' || item.status === 'failed')
     if (!existing) return this.enqueue(operation)
     if (existing.operation === 'create' && operation.operation === 'delete') {
@@ -37,12 +37,13 @@ export class IndexedDbSyncQueue {
     return queued
   }
 
-  async list(status?: SyncStatus) {
-    return status ? this.db.syncQueue.where('status').equals(status).sortBy('createdAt') : this.db.syncQueue.orderBy('createdAt').toArray()
+  async list(status?: SyncStatus, householdId?: string) {
+    const values = status ? await this.db.syncQueue.where('status').equals(status).sortBy('createdAt') : await this.db.syncQueue.orderBy('createdAt').toArray()
+    return householdId ? values.filter((operation) => operation.householdId === householdId) : values
   }
 
-  async ready(now = new Date()) {
-    const pending = await this.list('pending')
+  async ready(now = new Date(), householdId?: string) {
+    const pending = await this.list('pending', householdId)
     return pending.filter((operation) => !operation.nextAttemptAt || operation.nextAttemptAt <= now.toISOString())
   }
 
@@ -73,9 +74,9 @@ export class IndexedDbSyncQueue {
     })
   }
 
-  async pendingForEntity(entityType: SyncOperation['entityType'], entityId: string) {
+  async pendingForEntity(entityType: SyncOperation['entityType'], entityId: string, householdId?: string) {
     return (await this.db.syncQueue.where('entityId').equals(entityId).toArray())
-      .filter((operation) => operation.entityType === entityType && ['pending', 'syncing', 'conflict', 'failed'].includes(operation.status))
+      .filter((operation) => operation.entityType === entityType && (!householdId || operation.householdId === householdId) && ['pending', 'syncing', 'conflict', 'failed'].includes(operation.status))
   }
 
   async remove(id: string) {

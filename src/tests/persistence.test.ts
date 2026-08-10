@@ -110,4 +110,38 @@ describe('local-first repositories', () => {
     repository = new WebIndexedDbAppStateRepository(db)
     expect((await repository.load())?.household.id).toBe(expected.household.id)
   })
+
+  it('keeps independent snapshots and restores A after switching A to B to A', async () => {
+    const householdA = createDemoState()
+    householdA.household.name = 'Household A'
+    const householdB = createDemoState()
+    householdB.household.id = crypto.randomUUID()
+    householdB.household.name = 'Household B'
+    householdB.accounts = householdB.accounts.map((account) => ({ ...account, householdId: householdB.household.id, name: 'B account' }))
+
+    await repository.save(householdA)
+    await repository.save(householdB)
+    expect((await repository.load())?.household.name).toBe('Household B')
+
+    expect((await repository.activateHousehold(householdA.household.id))?.household.name).toBe('Household A')
+    expect((await repository.load())?.accounts[0].name).toBe(householdA.accounts[0].name)
+    expect((await repository.activateHousehold(householdB.household.id))?.accounts[0].name).toBe('B account')
+    expect((await repository.activateHousehold(householdA.household.id))?.accounts[0].name).toBe(householdA.accounts[0].name)
+  })
+
+  it('restores activeHouseholdId after a repository reload', async () => {
+    const householdA = createDemoState()
+    const householdB = createDemoState()
+    householdB.household.id = crypto.randomUUID()
+    await repository.save(householdA)
+    await repository.save(householdB)
+    db.close()
+
+    db = new HomeCoinWebDatabase(db.name)
+    repository = new WebIndexedDbAppStateRepository(db)
+
+    expect(await repository.getActiveHouseholdId()).toBe(householdB.household.id)
+    expect((await repository.load())?.household.id).toBe(householdB.household.id)
+    expect((await repository.loadHousehold(householdA.household.id))?.household.id).toBe(householdA.household.id)
+  })
 })
