@@ -1,0 +1,6 @@
+-- Compatibility pointer only.
+-- The executable, versioned phase-1 schema is:
+--   supabase/migrations/202608060001_shared_households.sql
+--
+-- Apply it through the Supabase CLI after review. HomeCoin never executes schema SQL
+-- from the browser, and the frontend must contain only the anonymous public key.
