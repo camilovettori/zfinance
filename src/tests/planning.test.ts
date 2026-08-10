@@ -181,11 +181,14 @@ describe('printable planning reports', () => {
 
   it('counts completed transfers into savings during the selected period', () => {
     const state = createDemoState()
-    const expected = state.transactions
-      .filter((transaction) => transaction.type === 'transfer' && transaction.tags.includes('recurring'))
-      .reduce((total, transaction) => total + transaction.amountCents, 0)
+    const reportDate = '2026-08-11'
+    const savingsTransfer = state.transactions.find((transaction) => transaction.type === 'transfer' && transaction.tags.includes('recurring'))
+    if (!savingsTransfer) throw new Error('Demo state must include its recurring savings transfer.')
+    savingsTransfer.transactionDate = reportDate
+    savingsTransfer.dueDate = reportDate
+    savingsTransfer.paidDate = reportDate
 
-    expect(savingsContributedInRange(state, todayIso(), todayIso())).toBe(expected)
+    expect(savingsContributedInRange(state, reportDate, reportDate)).toBe(savingsTransfer.amountCents)
   })
 
   it('includes adjacent August items in the first September planning week and its running balance', () => {

@@ -568,6 +568,9 @@ function App() {
   const [authSession, setAuthSession] = useState<Session | null | undefined>(
     syncConfiguration.enabled && !isDesktopRuntime() ? undefined : null,
   )
+  const [pendingInviteToken, setPendingInviteToken] = useState(() => (
+    !isDesktopRuntime() ? new URLSearchParams(window.location.search).get('invite') ?? '' : ''
+  ))
   const [activeSection, setActiveSection] = useState<SectionKey>('dashboard')
   const [weekReferenceDate, setWeekReferenceDate] = useState(new Date())
   const [calendarMonth, setCalendarMonth] = useState(new Date())
@@ -671,7 +674,7 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (!syncConfiguration.enabled || isDesktopRuntime() || loading || authSession === undefined) return
+    if (!syncConfiguration.enabled || isDesktopRuntime() || loading || authSession === undefined || pendingInviteToken) return
     if (!authSession) {
       deactivateSyncRuntime()
       return
@@ -679,7 +682,7 @@ function App() {
     const client = getSupabaseClient()
     if (!client) return
     void restoreActiveSyncRuntime(client).catch((error) => console.error('Failed to restore the active shared household.', error))
-  }, [authSession, loading])
+  }, [authSession, loading, pendingInviteToken])
 
   useEffect(() => () => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
@@ -1781,6 +1784,36 @@ function App() {
               </p>
             </div>
             <Suspense fallback={<p>Loading sharing settings…</p>}><SharingPanel authOnly state={state} onStateChanged={(syncedState) => { stateRef.current = syncedState; setState(syncedState) }} /></Suspense>
+          </Card>
+        </div>
+      </div>
+    )
+  }
+
+  if (syncConfiguration.enabled && !isDesktopRuntime() && authSession && pendingInviteToken) {
+    return (
+      <div className="app-shell min-h-screen px-4 py-8">
+        <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-3xl place-items-center">
+          <Card className="w-full p-6 md:p-8">
+            <div className="mb-6">
+              <p className="text-sm font-semibold uppercase tracking-[0.26em] text-emerald-700">HomeCoin</p>
+              <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">Accept invitation</h1>
+              <p className="mt-3 max-w-2xl text-slate-600">Open the shared household before creating any local planning data.</p>
+            </div>
+            <Suspense fallback={<p>Loading invitation…</p>}>
+              <SharingPanel
+                inviteOnly
+                initialInviteToken={pendingInviteToken}
+                state={state}
+                onStateChanged={(syncedState) => { stateRef.current = syncedState; setState(syncedState) }}
+                onInviteAccepted={() => {
+                  const url = new URL(window.location.href)
+                  url.searchParams.delete('invite')
+                  window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
+                  setPendingInviteToken('')
+                }}
+              />
+            </Suspense>
           </Card>
         </div>
       </div>

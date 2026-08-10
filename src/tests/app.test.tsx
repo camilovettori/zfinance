@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '@/app/App'
@@ -6,6 +6,7 @@ import { createDemoState } from '@/domain/seed'
 import type { AppState } from '@/domain/model'
 import { todayIso } from '@/lib/date'
 import { setAppStateRepositoryForTests } from '@/persistence'
+import { webDatabase } from '@/persistence/web/db'
 
 const fakeSession = {
   user: {
@@ -35,6 +36,9 @@ const authMocks = vi.hoisted(() => ({
   updatePassword: vi.fn(),
   getSupabaseClient: vi.fn(),
   restoreActiveSyncRuntime: vi.fn(),
+  acceptInvite: vi.fn(),
+  activateSyncRuntime: vi.fn(),
+  uploadLocalState: vi.fn(),
   deactivateSyncRuntime: vi.fn(),
 }))
 
@@ -56,6 +60,11 @@ vi.mock('@/sync', async () => {
     ...actual,
     getSupabaseClient: authMocks.getSupabaseClient,
     restoreActiveSyncRuntime: authMocks.restoreActiveSyncRuntime,
+    SupabaseHouseholdRepository: class {
+      acceptInvite = authMocks.acceptInvite
+    },
+    activateSyncRuntime: authMocks.activateSyncRuntime,
+    activeSyncCoordinator: () => ({ uploadLocalState: authMocks.uploadLocalState }),
     deactivateSyncRuntime: authMocks.deactivateSyncRuntime,
   }
 })
@@ -178,11 +187,15 @@ describe('HomeCoin app shell', () => {
     authMocks.updatePassword.mockReset()
     authMocks.getSupabaseClient.mockReset().mockReturnValue(null)
     authMocks.restoreActiveSyncRuntime.mockReset().mockResolvedValue(null)
+    authMocks.acceptInvite.mockReset()
+    authMocks.activateSyncRuntime.mockReset()
+    authMocks.uploadLocalState.mockReset()
     authMocks.deactivateSyncRuntime.mockReset()
   })
 
   afterEach(() => {
     window.localStorage.clear()
+    window.history.replaceState({}, '', '/')
     Reflect.deleteProperty(window, '__TAURI_INTERNALS__')
   })
 
@@ -211,6 +224,62 @@ describe('HomeCoin app shell', () => {
     expect(screen.queryByRole('heading', { name: /^Good (morning|afternoon|evening), / })).toBeNull()
   })
 
+  it('preserves an invitation through login and opens its remote household before onboarding', async () => {
+    const user = userEvent.setup()
+    const token = 'a'.repeat(43)
+    let authChanged: ((event: string, session: typeof fakeSession | null) => void) | undefined
+    window.history.replaceState({}, '', `/?invite=${token}&source=email#join`)
+    window.localStorage.clear()
+    authMocks.getSupabaseClient.mockReturnValue({})
+    authMocks.session.mockResolvedValueOnce(null)
+    authMocks.onAuthStateChange.mockImplementation((callback) => {
+      authChanged = callback
+      return () => undefined
+    })
+
+    const remoteSnapshot = createDemoState()
+    remoteSnapshot.household = { ...remoteSnapshot.household, id: 'invited-household', name: 'Invited household' }
+    remoteSnapshot.accounts = remoteSnapshot.accounts.map((account) => ({ ...account, householdId: remoteSnapshot.household.id }))
+    remoteSnapshot.categories = remoteSnapshot.categories.map((category) => ({ ...category, householdId: remoteSnapshot.household.id }))
+    remoteSnapshot.transactions = remoteSnapshot.transactions.map((transaction) => ({ ...transaction, householdId: remoteSnapshot.household.id }))
+    remoteSnapshot.recurringRules = remoteSnapshot.recurringRules.map((rule) => ({ ...rule, householdId: remoteSnapshot.household.id }))
+    const joined = {
+      household: remoteSnapshot.household,
+      membership: { id: 'invited-member', householdId: remoteSnapshot.household.id, name: 'Member', role: 'member', color: '#2F7D5B', active: true },
+    }
+    remoteSnapshot.members = [joined.membership]
+    authMocks.acceptInvite.mockResolvedValue(joined)
+    authMocks.activateSyncRuntime.mockResolvedValue({ isReady: vi.fn().mockResolvedValue(true) })
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Sign in to continue' })).toBeTruthy()
+    expect(window.location.search).toContain(`invite=${token}`)
+    expect(screen.queryByRole('heading', { name: "Let's set up your household plan" })).toBeNull()
+    expect(authMocks.restoreActiveSyncRuntime).not.toHaveBeenCalled()
+
+    await act(async () => authChanged?.('SIGNED_IN', fakeSession))
+    expect(await screen.findByRole('heading', { name: 'Accept invitation' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: "Let's set up your household plan" })).toBeNull()
+    expect(window.location.search).toContain(`invite=${token}`)
+
+    await webDatabase.appState.put({
+      id: `household:${remoteSnapshot.household.id}`,
+      schemaVersion: remoteSnapshot.schemaVersion,
+      payload: remoteSnapshot,
+      updatedAt: new Date().toISOString(),
+    })
+    await user.click(screen.getByRole('button', { name: 'Accept invitation' }))
+
+    expect(await screen.findByRole('heading', { name: /^Good (morning|afternoon|evening), / })).toBeTruthy()
+    expect(authMocks.acceptInvite).toHaveBeenCalledWith(token)
+    expect(authMocks.activateSyncRuntime).toHaveBeenCalledWith({}, remoteSnapshot.household.id, { openRemoteIfNeeded: true })
+    expect(authMocks.uploadLocalState).not.toHaveBeenCalled()
+    expect(new URL(window.location.href).searchParams.get('invite')).toBeNull()
+    expect(new URL(window.location.href).searchParams.get('source')).toBe('email')
+    expect(window.location.hash).toBe('#join')
+  })
+
   it('restores the active sync runtime after login without opening Settings', async () => {
     authMocks.getSupabaseClient.mockReturnValue({})
     render(<App />)
@@ -221,6 +290,7 @@ describe('HomeCoin app shell', () => {
 
   it('keeps Tauri local-only without restoring a cloud runtime', async () => {
     Object.defineProperty(window, '__TAURI_INTERNALS__', { value: {}, configurable: true })
+    window.history.replaceState({}, '', `/?invite=${'c'.repeat(43)}`)
     const desktopState = createDemoState()
     setAppStateRepositoryForTests({
       load: async () => desktopState,
@@ -233,6 +303,7 @@ describe('HomeCoin app shell', () => {
 
     await screen.findByRole('heading', { name: /^Good (morning|afternoon|evening), Our Home$/ })
     expect(authMocks.restoreActiveSyncRuntime).not.toHaveBeenCalled()
+    expect(screen.queryByRole('heading', { name: 'Accept invitation' })).toBeNull()
     Reflect.deleteProperty(window, '__TAURI_INTERNALS__')
   })
 

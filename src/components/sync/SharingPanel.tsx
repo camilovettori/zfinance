@@ -5,7 +5,7 @@ import { serializeBackup } from '@/domain/backup'
 import type { AppState, Household, HouseholdMember } from '@/domain/model'
 import { isTauriRuntime } from '@/persistence/runtime'
 import { webDatabase } from '@/persistence/web/db'
-import { getActiveHouseholdId, saveState } from '@/services/storage'
+import { getActiveHouseholdId, loadHouseholdState, saveState } from '@/services/storage'
 import { buildInvitationUrl } from '@/sync/invite-url'
 import {
   activateSyncRuntime,
@@ -22,6 +22,9 @@ type Props = {
   state: AppState
   onStateChanged(state: AppState): void
   authOnly?: boolean
+  inviteOnly?: boolean
+  initialInviteToken?: string
+  onInviteAccepted?(household: HouseholdSummary): void
 }
 
 const messageOf = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong. Please try again.'
@@ -55,7 +58,7 @@ function moveLocalStateToHousehold(state: AppState, household: Household, member
   }
 }
 
-export function SharingPanel({ state, onStateChanged, authOnly = false }: Props) {
+export function SharingPanel({ state, onStateChanged, authOnly = false, inviteOnly = false, initialInviteToken, onInviteAccepted }: Props) {
   const client = useMemo(() => getSupabaseClient(), [])
   const auth = useMemo(() => new AuthService(client), [client])
   const householdsRepository = useMemo(() => client ? new SupabaseHouseholdRepository(client) : null, [client])
@@ -73,7 +76,8 @@ export function SharingPanel({ state, onStateChanged, authOnly = false }: Props)
   const [creatingHousehold, setCreatingHousehold] = useState(false)
   const [members, setMembers] = useState<HouseholdMember[]>([])
   const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteToken, setInviteToken] = useState(() => new URLSearchParams(window.location.search).get('invite') ?? '')
+  const [inviteToken, setInviteToken] = useState(() => initialInviteToken ?? new URLSearchParams(window.location.search).get('invite') ?? '')
+  const [acceptedInvitation, setAcceptedInvitation] = useState<HouseholdSummary | null>(null)
   const [createdInvite, setCreatedInvite] = useState('')
   const [migration, setMigration] = useState<LocalMigrationSummary | null>(null)
   const [ready, setReady] = useState(false)
@@ -117,26 +121,61 @@ export function SharingPanel({ state, onStateChanged, authOnly = false }: Props)
     })
   }
 
+  const acceptInvitation = async () => {
+    if (!householdsRepository || !client) return
+    const joined = inviteOnly && acceptedInvitation ? acceptedInvitation : await householdsRepository.acceptInvite(inviteToken)
+    if (inviteOnly) setAcceptedInvitation(joined)
+    setHouseholds((items) => items.some((item) => item.household.id === joined.household.id) ? items : [...items, joined])
+    setActive(joined)
+
+    if (inviteOnly) {
+      const coordinator = await activateSyncRuntime(client, joined.household.id, { openRemoteIfNeeded: true })
+      const [isReady, snapshot] = await Promise.all([
+        coordinator.isReady(),
+        loadHouseholdState(joined.household.id),
+      ])
+      if (!isReady || !snapshot) throw new Error('The shared household could not be loaded. Please try again.')
+      onStateChanged(snapshot)
+      onInviteAccepted?.(joined)
+      return
+    }
+
+    setInviteToken('')
+    const url = new URL(window.location.href)
+    url.searchParams.delete('invite')
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
+    setNotice('Invitation accepted.')
+  }
+
+  const renderInvitationPanel = () => (
+    <details open={Boolean(inviteToken)}>
+      <summary>Join with an invitation</summary>
+      <div className="sync-form-grid">
+        <label>Invitation token<input className="input" value={inviteToken} onChange={(event) => setInviteToken(event.target.value)} /></label>
+        <button className="button-secondary" disabled={busy || !inviteToken} onClick={() => void run(acceptInvitation)}>Accept invitation</button>
+      </div>
+    </details>
+  )
+
   useEffect(() => {
     if (authOnly) return
     if (!client) return
     let hadSession = false
     void auth.session().then((value) => {
       hadSession = Boolean(value); setSession(value); setLoading(false)
-      if (value) void loadHouseholds().catch((caught) => setError(messageOf(caught)))
+      if (value && !inviteOnly) void loadHouseholds().catch((caught) => setError(messageOf(caught)))
     }).catch((caught) => { setError(messageOf(caught)); setLoading(false) })
     return auth.onAuthStateChange((event, value) => {
       if (event === 'PASSWORD_RECOVERY') setPasswordRecovery(true)
       if (event === 'SIGNED_OUT' && hadSession) setSessionExpired(true)
-      if (value) { hadSession = true; setSessionExpired(false); void loadHouseholds().catch((caught) => setError(messageOf(caught))) }
+      if (value) { hadSession = true; setSessionExpired(false); if (!inviteOnly) void loadHouseholds().catch((caught) => setError(messageOf(caught))) }
       else { setHouseholds([]); setActive(null) }
       setSession(value)
-      if (window.location.search.includes('invite=')) window.history.replaceState({}, '', window.location.pathname)
     })
-  }, [auth, client, authOnly]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [auth, client, authOnly, inviteOnly]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!active || !client || !householdsRepository) return
+    if (inviteOnly || !active || !client || !householdsRepository) return
     let cancelled = false
     void (async () => {
       const coordinator = await activateSyncRuntime(client, active.household.id, { openRemoteIfNeeded: true })
@@ -147,7 +186,7 @@ export function SharingPanel({ state, onStateChanged, authOnly = false }: Props)
       setConflicts(unresolved.map(({ id, entityType, entityId }) => ({ id, entityType, entityId })))
     })().catch((caught) => { if (!cancelled) setError(messageOf(caught)) })
     return () => { cancelled = true }
-  }, [active, client, householdsRepository])
+  }, [active, client, householdsRepository, inviteOnly])
 
   if (!syncConfiguration.enabled) {
     return <div className="sync-panel"><strong>Local only</strong><p>{syncConfiguration.message}</p></div>
@@ -175,6 +214,14 @@ export function SharingPanel({ state, onStateChanged, authOnly = false }: Props)
     </div>
   }
 
+  if (inviteOnly) {
+    return <div className="sync-panel">
+      <div><strong>Accept invitation</strong><p>Join the shared household before setting up local data on this device.</p></div>
+      {renderInvitationPanel()}
+      {error ? <p className="sync-error" role="alert">{error}</p> : null}
+    </div>
+  }
+
   return <div className="sync-panel">
     <div className="sync-panel-heading"><div><strong>Shared household</strong><p>{session.user.email}</p></div><button className="button-ghost" disabled={busy} onClick={() => void run(async () => { deactivateSyncRuntime(); await auth.signOut(); setSessionExpired(false) })}>Log out</button></div>
     {households.length ? <><label>Household<select className="select" value={active?.household.id ?? ''} onChange={(event) => { setReady(false); setMigration(null); setActive(households.find((item) => item.household.id === event.target.value) ?? null) }}>{households.map((item) => <option key={item.household.id} value={item.household.id}>{item.household.name}</option>)}</select></label><button className="button-secondary" disabled={busy} onClick={() => setCreatingHousehold((value) => !value)}>Create another household</button></> : null}
@@ -189,10 +236,7 @@ export function SharingPanel({ state, onStateChanged, authOnly = false }: Props)
       })}>Create household</button>
     </div> : null}
 
-    <details {...(inviteToken ? { open: true } : {})}><summary>Join with an invitation</summary><div className="sync-form-grid"><label>Invitation token<input className="input" value={inviteToken} onChange={(event) => setInviteToken(event.target.value)} /></label><button className="button-secondary" disabled={busy || !inviteToken} onClick={() => void run(async () => {
-      if (!householdsRepository) return
-      const joined = await householdsRepository.acceptInvite(inviteToken); setHouseholds((items) => [...items, joined]); setActive(joined); setInviteToken(''); setNotice('Invitation accepted.')
-    })}>Accept invitation</button></div></details>
+    {renderInvitationPanel()}
 
     {active ? <>
       <div className="sync-members"><strong>Members</strong>{members.map((member) => <div key={member.id}><span>{member.name} · {member.role}</span>{active.membership.role === 'owner' && member.role !== 'owner' ? <button onClick={() => void run(async () => { await householdsRepository?.removeMember(active.household.id, member.id); setMembers(await householdsRepository!.members(active.household.id)) })}>Remove</button> : null}</div>)}</div>
