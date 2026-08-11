@@ -193,6 +193,68 @@ export function buildMobileDashboardModel(state: AppState, referenceDate = new D
   const runwayIsInfinite = firstNegativeIndex === -1
   const runwayDays = runwayIsInfinite ? 90 : firstNegativeIndex
 
+  const goals = state.goals.filter((goal) => !goal.archived).map((goal) => ({
+    id: goal.id,
+    name: goal.name,
+    currentCents: goal.currentCents,
+    targetCents: goal.targetCents,
+    percent: goal.targetCents > 0 ? Math.min(100, Math.round((goal.currentCents / goal.targetCents) * 100)) : 100,
+    targetDate: goal.targetDate,
+    monthsToTarget: goal.monthlyContributionCents > 0 ? Math.ceil((goal.targetCents - goal.currentCents) / goal.monthlyContributionCents) : null,
+  }))
+
+  const firstNegativeDay = horizon.find((day) => day.isNegative)
+  const tightMargin = availableNowCents > 0 && safeToSpendCents < availableNowCents * 0.1
+  const debtGoalWithProgress = goals.find((goal) => goal.percent > 75)
+
+  const { headline, tone } = firstNegativeDay
+    ? {
+      tone: 'warning' as const,
+      headline: {
+        template: 'Short by {shortfall} on {day} — {billsAmount} of bills before your next payday.',
+        values: {
+          shortfall: Math.abs(firstNegativeDay.balanceAfterCents),
+          day: new Intl.DateTimeFormat(state.settings.locale, { weekday: 'long' }).format(fromIsoDate(firstNegativeDay.date)),
+          billsAmount: horizonBillsCents,
+        },
+      },
+    }
+    : tightMargin
+      ? {
+        tone: 'tight' as const,
+        headline: {
+          template: "{safeToSpend} to spend {until}. It's tight but it holds.",
+          values: { safeToSpend: safeToSpendCents, until: safeToSpendUntilLabel },
+        },
+      }
+      : !debt.isDebtFree && debt.payoffDateIso
+        ? {
+          tone: 'good' as const,
+          headline: {
+            template: '{safeToSpend} to spend {until}. Debt-free by {payoffDate} at this pace.',
+            values: {
+              safeToSpend: safeToSpendCents,
+              until: safeToSpendUntilLabel,
+              payoffDate: new Intl.DateTimeFormat(state.settings.locale, { month: 'long', year: 'numeric' }).format(fromIsoDate(debt.payoffDateIso)),
+            },
+          },
+        }
+        : debtGoalWithProgress
+          ? {
+            tone: 'good' as const,
+            headline: {
+              template: '{safeToSpend} to spend {until}. {goalName} is {percent}% there.',
+              values: { safeToSpend: safeToSpendCents, until: safeToSpendUntilLabel, goalName: debtGoalWithProgress.name, percent: debtGoalWithProgress.percent },
+            },
+          }
+          : {
+            tone: 'good' as const,
+            headline: {
+              template: '{safeToSpend} to spend {until}.',
+              values: { safeToSpend: safeToSpendCents, until: safeToSpendUntilLabel },
+            },
+          }
+
   return {
     todayIso: today,
     tomorrowIso: tomorrow,
@@ -216,8 +278,8 @@ export function buildMobileDashboardModel(state: AppState, referenceDate = new D
     lowPointCents: lowPointEntry?.balanceAfterCents ?? 0,
     lowPointDateIso: lowPointEntry?.date ?? null,
     debt,
-    goals: [],
-    headline: { template: '', values: {} },
-    tone: 'good',
+    goals,
+    headline,
+    tone,
   }
 }
