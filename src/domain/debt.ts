@@ -1,4 +1,5 @@
 import { addMonths, startOfMonth, subMonths } from 'date-fns'
+import { currentSpendableBalance } from './cashflow'
 import type { AccountType, AppState, RecurringRule } from './model'
 import { toIsoDate } from '@/lib/date'
 
@@ -96,4 +97,8 @@ export function buildDebtSummary(state: AppState, referenceDate = new Date()): D
     payoffDateIso,
     isDebtFree: totalOwedCents === 0,
   }
+}
+
+export function netWorthCents(state: AppState): number {
+  return currentSpendableBalance(state) - buildDebtSummary(state).totalOwedCents
 }

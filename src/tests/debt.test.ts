@@ -1,6 +1,7 @@
 import { addMonths, subMonths } from 'date-fns'
 import { describe, expect, it } from 'vitest'
-import { buildDebtSummary, LIABILITY_ACCOUNT_TYPES } from '@/domain/debt'
+import { currentSpendableBalance } from '@/domain/cashflow'
+import { buildDebtSummary, LIABILITY_ACCOUNT_TYPES, netWorthCents } from '@/domain/debt'
 import { createBlankState } from '@/domain/seed'
 import type { FinancialAccount, RecurringRule, Transaction } from '@/domain/model'
 import { toIsoDate } from '@/lib/date'
@@ -222,5 +223,30 @@ describe('buildDebtSummary — payoff projection', () => {
     const summary = buildDebtSummary(state, referenceDate)
 
     expect(summary.monthlyPaymentPaceCents).toBe(0)
+  })
+})
+
+describe('netWorthCents', () => {
+  it('subtracts total owed from the spendable balance', () => {
+    const { state } = fixture()
+    state.accounts = [
+      account({ type: 'current', currentBalanceCents: 150_000 }, state.household.id),
+      account({ type: 'credit-card', currentBalanceCents: -40_000 }, state.household.id),
+    ]
+
+    expect(netWorthCents(state)).toBe(110_000)
+  })
+
+  it('does not let liability accounts affect currentSpendableBalance (cashflow.ts regression)', () => {
+    const { state } = fixture()
+    state.accounts = [
+      account({ type: 'current', currentBalanceCents: 150_000 }, state.household.id),
+      account({ type: 'credit-card', currentBalanceCents: -40_000 }, state.household.id),
+      account({ type: 'loan', currentBalanceCents: -80_000 }, state.household.id),
+    ]
+
+    // currentSpendableBalance must ignore credit-card/loan/financing entirely — pinned
+    // against a regression in cashflow.ts's spendableAccountIds filter.
+    expect(currentSpendableBalance(state)).toBe(150_000)
   })
 })
