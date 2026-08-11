@@ -24,3 +24,6 @@ export const SECTION_ITEMS: Array<{ key: SectionKey; label: string; icon: Lucide
   { key: 'settings', label: 'Settings', icon: Settings },
 ]
 
+const MAIN_NAVIGATION_KEYS: SectionKey[] = ['dashboard', 'planner', 'savings', 'reports', 'settings']
+
+export const MAIN_NAVIGATION_ITEMS = SECTION_ITEMS.filter((item) => MAIN_NAVIGATION_KEYS.includes(item.key))

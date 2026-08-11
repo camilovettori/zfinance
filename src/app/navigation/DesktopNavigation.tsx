@@ -1,8 +1,8 @@
-import { SECTION_ITEMS, type SectionKey } from './sections'
+import { MAIN_NAVIGATION_ITEMS, type SectionKey } from './sections'
 
 export function DesktopNavigation({ activeSection, onNavigate }: { activeSection: SectionKey; onNavigate: (section: SectionKey) => void }) {
   return <nav className="app-nav" aria-label="Main navigation">
-    {SECTION_ITEMS.map((item) => {
+    {MAIN_NAVIGATION_ITEMS.map((item) => {
       const Icon = item.icon
       return <button
         key={item.key}
@@ -16,4 +16,3 @@ export function DesktopNavigation({ activeSection, onNavigate }: { activeSection
     })}
   </nav>
 }
-

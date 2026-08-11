@@ -1,14 +1,13 @@
 import { useEffect, useState } from 'react'
-import { ChartNoAxesCombined, FileChartColumn, Menu, ReceiptText, CalendarRange } from 'lucide-react'
+import { ChartNoAxesCombined, FileChartColumn, Menu, CalendarRange } from 'lucide-react'
 import { SECTION_ITEMS, type SectionKey } from './sections'
 
 const primary: Array<{ key: SectionKey; label: string; icon: typeof CalendarRange }> = [
   { key: 'dashboard', label: 'Home', icon: ChartNoAxesCombined },
   { key: 'planner', label: 'Planner', icon: CalendarRange },
-  { key: 'bills', label: 'Bills', icon: ReceiptText },
   { key: 'reports', label: 'Reports', icon: FileChartColumn },
 ]
-const moreKeys: SectionKey[] = ['week', 'calendar', 'recurring', 'savings', 'settings']
+const moreKeys: SectionKey[] = ['savings', 'settings']
 
 export function MobileBottomNavigation({ activeSection, onNavigate }: { activeSection: SectionKey; onNavigate: (section: SectionKey) => void }) {
   const [moreOpen, setMoreOpen] = useState(false)
@@ -51,4 +50,3 @@ export function MobileBottomNavigation({ activeSection, onNavigate }: { activeSe
     </div> : null}
   </>
 }
-

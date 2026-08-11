@@ -324,7 +324,7 @@ describe('HomeCoin app shell', () => {
     })
   })
 
-  it('uses five-item bottom navigation on mobile and keeps Settings inside More', async () => {
+  it('uses simplified bottom navigation on mobile and keeps Savings and Settings inside More', async () => {
     setViewport(390)
     const user = userEvent.setup()
     const { container } = render(<App />)
@@ -332,9 +332,14 @@ describe('HomeCoin app shell', () => {
 
     expect(container.querySelector('.app-sidebar')).toBeNull()
     const navigation = screen.getByRole('navigation', { name: 'Mobile navigation' })
-    expect(within(navigation).getAllByRole('button')).toHaveLength(5)
+    expect(within(navigation).getAllByRole('button')).toHaveLength(4)
     expect(within(navigation).getByRole('button', { name: 'Planner' })).toBeTruthy()
+    expect(within(navigation).queryByRole('button', { name: 'Bills' })).toBeNull()
     await user.click(within(navigation).getByRole('button', { name: 'More sections' }))
+    expect(screen.queryByRole('button', { name: 'This Week' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'This Month' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Recurring' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Savings' })).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Settings' }))
     expect(await screen.findByRole('heading', { name: 'Settings' })).toBeTruthy()
   })
@@ -346,6 +351,8 @@ describe('HomeCoin app shell', () => {
     await screen.findByRole('heading', { name: /^Good / })
     expect(container.querySelector('.app-sidebar')).toBeTruthy()
     expect(screen.queryByRole('navigation', { name: 'Mobile navigation' })).toBeNull()
+    const navigation = screen.getByRole('navigation', { name: 'Main navigation' })
+    expect(within(navigation).getAllByRole('button').map((button) => button.textContent)).toEqual(['Dashboard', 'Planner', 'Savings', 'Reports', 'Settings'])
     await user.click(screen.getByRole('button', { name: 'Planner' }))
     expect(await screen.findByRole('heading', { name: / Planner$/ })).toBeTruthy()
     expect(container.querySelector('.planning-day-grid')?.children).toHaveLength(7)
@@ -390,10 +397,10 @@ describe('HomeCoin app shell', () => {
 
   it('renders Bills as mobile disclosure cards without a horizontal table', async () => {
     setViewport(390)
-    const user = userEvent.setup()
     const { container } = render(<App />)
     await screen.findByRole('heading', { name: /^Good / })
-    await user.click(screen.getByRole('button', { name: 'Bills' }))
+    fireEvent.keyDown(document.body, { key: 'g' })
+    fireEvent.keyDown(document.body, { key: 'b' })
     expect(await screen.findByRole('heading', { name: 'Bills' })).toBeTruthy()
     expect(container.querySelector('.data-table.mobile-card-table')).toBeTruthy()
     expect(container.querySelector('td[data-label="Due date"]')).toBeTruthy()
@@ -504,10 +511,10 @@ describe('HomeCoin app shell', () => {
   }, 20_000)
 
   it('shows a running weekly balance that carries into future weeks', async () => {
-    const user = userEvent.setup()
     render(<App />)
     await screen.findByRole('heading', { name: /^Good / })
-    await user.click(screen.getAllByRole('button', { name: /^This Week$/ })[0])
+    fireEvent.keyDown(document.body, { key: 'g' })
+    fireEvent.keyDown(document.body, { key: 'w' })
 
     expect(await screen.findByText('Opening balance')).toBeTruthy()
     expect(screen.getByText('Projected closing balance')).toBeTruthy()
@@ -519,7 +526,8 @@ describe('HomeCoin app shell', () => {
     const user = userEvent.setup()
     render(<App />)
     await screen.findByRole('heading', { name: /^Good / })
-    await user.click(screen.getAllByRole('button', { name: /^Bills$/ })[0])
+    fireEvent.keyDown(document.body, { key: 'g' })
+    fireEvent.keyDown(document.body, { key: 'b' })
     await screen.findByRole('heading', { name: 'Bills' })
 
     await user.click((await screen.findAllByTitle('Delete bill'))[0])
@@ -542,7 +550,8 @@ describe('HomeCoin app shell', () => {
     const user = userEvent.setup()
     render(<App />)
     await screen.findByRole('heading', { name: /^Good / })
-    await user.click(screen.getAllByRole('button', { name: /^Recurring$/ })[0])
+    fireEvent.keyDown(document.body, { key: 'g' })
+    fireEvent.keyDown(document.body, { key: 'r' })
     await screen.findByRole('heading', { name: 'Recurring income & expenses' })
 
     await user.click((await screen.findAllByTitle('Delete recurring item'))[0])
@@ -564,7 +573,8 @@ describe('HomeCoin app shell', () => {
     const user = userEvent.setup()
     render(<App />)
     await screen.findByRole('heading', { name: /^Good / })
-    await user.click(screen.getAllByRole('button', { name: /^Bills$/ })[0])
+    fireEvent.keyDown(document.body, { key: 'g' })
+    fireEvent.keyDown(document.body, { key: 'b' })
     await screen.findByRole('heading', { name: 'Bills' })
 
     await user.click(screen.getByRole('button', { name: /Add bill/ }))
@@ -627,7 +637,8 @@ describe('HomeCoin app shell', () => {
     const user = userEvent.setup()
     render(<App />)
     await screen.findByRole('heading', { name: /^Good / })
-    await user.click(screen.getAllByRole('button', { name: /^Bills$/ })[0])
+    fireEvent.keyDown(document.body, { key: 'g' })
+    fireEvent.keyDown(document.body, { key: 'b' })
 
     const firstRow = (await screen.findAllByText('Editable mobile bill'))[0].closest('tr')!
     await user.click(within(firstRow).getByRole('button', { name: 'Edit' }))
