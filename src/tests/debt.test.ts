@@ -1,7 +1,9 @@
+import { addMonths, subMonths } from 'date-fns'
 import { describe, expect, it } from 'vitest'
 import { buildDebtSummary, LIABILITY_ACCOUNT_TYPES } from '@/domain/debt'
 import { createBlankState } from '@/domain/seed'
-import type { FinancialAccount } from '@/domain/model'
+import type { FinancialAccount, RecurringRule, Transaction } from '@/domain/model'
+import { toIsoDate } from '@/lib/date'
 
 function account(overrides: Partial<FinancialAccount>, householdId: string): FinancialAccount {
   return {
@@ -24,6 +26,46 @@ function account(overrides: Partial<FinancialAccount>, householdId: string): Fin
 function fixture() {
   const state = createBlankState()
   return { state }
+}
+
+function transaction(overrides: Partial<Transaction>, householdId: string, categoryId: string, accountId: string): Transaction {
+  return {
+    id: crypto.randomUUID(),
+    householdId,
+    title: 'Payment',
+    description: 'Payment',
+    amountCents: 0,
+    type: 'expense',
+    categoryId,
+    accountId,
+    transactionDate: '2026-01-01',
+    status: 'paid',
+    tags: [],
+    notes: '',
+    source: 'manual',
+    splits: [],
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  }
+}
+
+function rule(overrides: Partial<RecurringRule>, householdId: string, categoryId: string, accountId: string): RecurringRule {
+  return {
+    id: crypto.randomUUID(),
+    householdId,
+    name: 'Card payment',
+    amountCents: 0,
+    frequency: 'monthly',
+    interval: 1,
+    nextDueDate: '2026-09-01',
+    accountId,
+    categoryId,
+    generateAutomatically: true,
+    reminder: false,
+    active: true,
+    ...overrides,
+  }
 }
 
 describe('buildDebtSummary — liability accounts', () => {
@@ -103,5 +145,82 @@ describe('buildDebtSummary — liability accounts', () => {
 
     expect(summary.paidOffCents).toBe(0)
     expect(summary.paidOffPercent).toBe(0)
+  })
+})
+
+describe('buildDebtSummary — payoff projection', () => {
+  const referenceDate = new Date('2026-08-11T12:00:00')
+
+  it('projects a payoff date from 3 months of completed liability payments', () => {
+    const { state } = fixture()
+    const card = account({ type: 'credit-card', currentBalanceCents: -60_000 }, state.household.id)
+    state.accounts = [card]
+    const categoryId = state.categories[0].id
+    const months = [subMonths(referenceDate, 1), subMonths(referenceDate, 2), subMonths(referenceDate, 3)]
+    state.transactions = months.map((month) =>
+      transaction({ amountCents: 10_000, transactionDate: toIsoDate(month), status: 'paid', type: 'expense' }, state.household.id, categoryId, card.id),
+    )
+
+    const summary = buildDebtSummary(state, referenceDate)
+
+    expect(summary.monthlyPaymentPaceCents).toBe(10_000)
+    expect(summary.monthsRemaining).toBe(6)
+    expect(summary.payoffDateIso).toBe(toIsoDate(addMonths(referenceDate, 6)))
+  })
+
+  it('counts transfers into a liability account as payments', () => {
+    const { state } = fixture()
+    const spending = account({ type: 'current', currentBalanceCents: 200_000 }, state.household.id)
+    const card = account({ type: 'credit-card', currentBalanceCents: -30_000 }, state.household.id)
+    state.accounts = [spending, card]
+    const categoryId = state.categories[0].id
+    state.transactions = [subMonths(referenceDate, 1), subMonths(referenceDate, 2), subMonths(referenceDate, 3)].map((month) =>
+      transaction(
+        { amountCents: 5_000, transactionDate: toIsoDate(month), status: 'paid', type: 'transfer', accountId: spending.id, counterpartyAccountId: card.id },
+        state.household.id,
+        categoryId,
+        spending.id,
+      ),
+    )
+
+    const summary = buildDebtSummary(state, referenceDate)
+
+    expect(summary.monthlyPaymentPaceCents).toBe(5_000)
+  })
+
+  it('falls back to recurring rules when there is no payment history', () => {
+    const { state } = fixture()
+    const card = account({ type: 'credit-card', currentBalanceCents: -24_000 }, state.household.id)
+    state.accounts = [card]
+    const categoryId = state.categories[0].id
+    state.recurringRules = [rule({ amountCents: 2_000, frequency: 'monthly' }, state.household.id, categoryId, card.id)]
+
+    const summary = buildDebtSummary(state, referenceDate)
+
+    expect(summary.monthlyPaymentPaceCents).toBe(2_000)
+    expect(summary.monthsRemaining).toBe(12)
+  })
+
+  it('never fabricates a payoff date when the pace is zero', () => {
+    const { state } = fixture()
+    state.accounts = [account({ type: 'credit-card', currentBalanceCents: -24_000 }, state.household.id)]
+
+    const summary = buildDebtSummary(state, referenceDate)
+
+    expect(summary.monthlyPaymentPaceCents).toBe(0)
+    expect(summary.monthsRemaining).toBeNull()
+    expect(summary.payoffDateIso).toBeNull()
+  })
+
+  it('ignores inactive recurring rules in the fallback', () => {
+    const { state } = fixture()
+    const card = account({ type: 'credit-card', currentBalanceCents: -24_000 }, state.household.id)
+    state.accounts = [card]
+    const categoryId = state.categories[0].id
+    state.recurringRules = [rule({ amountCents: 2_000, frequency: 'monthly', active: false }, state.household.id, categoryId, card.id)]
+
+    const summary = buildDebtSummary(state, referenceDate)
+
+    expect(summary.monthlyPaymentPaceCents).toBe(0)
   })
 })
