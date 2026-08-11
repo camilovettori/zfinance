@@ -154,8 +154,8 @@ describe('buildMobileDashboardModel — safe to spend and runway (Act 1)', () =>
     const model = buildMobileDashboardModel(appState, referenceDate)
 
     // horizon: today 2026-08-11 -> next income 2026-08-13, 3 days. Bills in horizon: 70_000.
-    // savings: 31_000 * 3 / 31 (August has 31 days) = 3000 rounded.
-    expect(model.safeToSpendCents).toBe(100_000 - 70_000 - 3_000)
+    // savings: 31_000 * (3 / 30) = 3100 rounded, using the fixed 30-day allocation.
+    expect(model.safeToSpendCents).toBe(100_000 - 70_000 - 3_100)
   })
 
   it('does not clamp a negative safe-to-spend value', () => {
@@ -215,10 +215,10 @@ describe('buildMobileDashboardModel — goals and headline (Act 3)', () => {
     const model = buildMobileDashboardModel(appState, referenceDate)
 
     expect(model.tone).toBe('warning')
-    expect(model.headline.template).toBe('Short by {shortfall} on {day} — {billsAmount} of bills before your next payday.')
-    expect(model.headline.values.shortfall).toBe(20_000)
-    expect(model.headline.values.day).toBe('Thursday')
-    expect(model.headline.values.billsAmount).toBe(70_000)
+    expect(model.headline.template).toBe('Short by {amount} on {day} — {billTotal} of bills before your next payday.')
+    expect(model.headline.values.amount).toBe(20_000)
+    expect(model.headline.values.day).toBe('Thu, 13 Aug')
+    expect(model.headline.values.billTotal).toBe(70_000)
     expect(model.headline.template).not.toMatch(/[€$]/)
     for (const value of Object.values(model.headline.values)) {
       if (typeof value === 'number') expect(Number.isFinite(value)).toBe(true)
@@ -236,7 +236,7 @@ describe('buildMobileDashboardModel — goals and headline (Act 3)', () => {
     const model = buildMobileDashboardModel(appState, referenceDate)
 
     expect(model.tone).toBe('tight')
-    expect(model.headline.template).toBe("{safeToSpend} to spend {until}. It's tight but it holds.")
+    expect(model.headline.template).toBe("{amount} to spend {until}. It's tight but it holds.")
   })
 
   it('produces a good/debt headline with a payoff date when debt exists and a pace is known', () => {
@@ -252,9 +252,9 @@ describe('buildMobileDashboardModel — goals and headline (Act 3)', () => {
     const model = buildMobileDashboardModel(appState, referenceDate)
 
     expect(model.tone).toBe('good')
-    expect(model.headline.template).toBe('{safeToSpend} to spend {until}. Debt-free by {payoffDate} at this pace.')
-    // totalOwedCents 30_000 / pace 5_000 = 6 months from referenceDate (11 Aug 2026) -> 11 Feb 2027.
-    expect(model.headline.values.payoffDate).toBe('February 2027')
+    expect(model.headline.template).toBe('{amount} to spend {until}. Debt-free by {payoffDate} at this pace.')
+    // Display formatting belongs to the component; the model exposes the raw ISO date.
+    expect(model.headline.values.payoffDate).toBe('2027-02-11')
   })
 
   it('produces a good/goal headline when a goal is over 75% funded and there is no debt or shortfall', () => {
@@ -267,15 +267,15 @@ describe('buildMobileDashboardModel — goals and headline (Act 3)', () => {
     const model = buildMobileDashboardModel(appState, referenceDate)
 
     expect(model.tone).toBe('good')
-    expect(model.headline.template).toBe('{safeToSpend} to spend {until}. {goalName} is {percent}% there.')
+    expect(model.headline.template).toBe('{amount} to spend {until}. {goalName} is {goalPercent}% there.')
     expect(model.headline.values.goalName).toBe('Emergency fund')
-    expect(model.headline.values.percent).toBe(80)
+    expect(model.headline.values.goalPercent).toBe('80')
   })
 
   it('falls back to the plain safe-to-spend headline with no debt or goals', () => {
     const model = buildMobileDashboardModel(state(200_000), referenceDate)
 
     expect(model.tone).toBe('good')
-    expect(model.headline.template).toBe('{safeToSpend} to spend {until}.')
+    expect(model.headline.template).toBe('{amount} to spend {until}.')
   })
 })

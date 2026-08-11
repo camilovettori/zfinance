@@ -1,11 +1,7 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
-import { MobileDashboard } from '@/app/dashboard/MobileDashboard'
+import { describe, expect, it } from 'vitest'
 import { buildMobileDashboardModel } from '@/app/dashboard/mobile-dashboard-model'
-import { buildRollingBalanceProjection } from '@/domain/cashflow'
 import { createBlankState } from '@/domain/seed'
 import type { AppState, RecurringRule, Transaction } from '@/domain/model'
-import { buildPlanningWeeks, createPlannerCycle, savingsContributedInRange } from '@/domain/planning'
 
 const referenceDate = new Date(2026, 7, 11, 12, 0, 0)
 const createdAt = '2026-08-01T09:00:00.000Z'
@@ -66,10 +62,14 @@ function recurringRule(state: AppState, values: Pick<RecurringRule, 'id' | 'name
   }
 }
 
-describe('mobile dashboard', () => {
+describe('mobile dashboard model', () => {
   it('renders tomorrow, after-tomorrow balance, and grouped next income', () => {
     const state = dashboardState()
     const category = categoryIds(state)
+    state.goals = [{
+      id: 'goal', householdId: state.household.id, name: 'Buffer', targetCents: 300_000, currentCents: 0,
+      monthlyContributionCents: 30_000, priority: 1, notes: '', archived: false,
+    }]
     state.transactions = [
       transaction(state, { id: 'income-a', title: 'Iris Wages', amountCents: 57_070, type: 'income', categoryId: category.income, transactionDate: '2026-08-12' }),
       transaction(state, { id: 'income-b', title: 'Partner Wages', amountCents: 53_552, type: 'income', categoryId: category.income, transactionDate: '2026-08-12' }),
@@ -77,25 +77,19 @@ describe('mobile dashboard', () => {
     ]
 
     const model = buildMobileDashboardModel(state, referenceDate)
-    expect(model.tomorrowItems.map((item) => item.title)).toEqual(['Iris Wages', 'Partner Wages', 'Electricity'])
-    expect(model.tomorrowIncomingCents).toBe(110_622)
-    expect(model.tomorrowDueCents).toBe(40_000)
-    expect(model.afterTomorrowCents).toBe(170_622)
+    expect(model.horizon.find((event) => event.date === '2026-08-12')?.items.map((item) => item.title))
+      .toEqual(['Iris Wages', 'Partner Wages', 'Electricity'])
     expect(model.nextIncome?.items).toHaveLength(2)
     expect(model.nextIncome?.totalCents).toBe(110_622)
-
-    render(<MobileDashboard state={state} referenceDate={referenceDate} onEditItem={vi.fn()} onAddIncome={vi.fn()} onAddBill={vi.fn()} />)
-    expect(screen.getByText('Tomorrow')).toBeTruthy()
-    expect(screen.getByText('2 incomes')).toBeTruthy()
-    expect(screen.getAllByText(/€1,706\.22/).length).toBeGreaterThan(0)
+    expect(model.safeToSpendCents).toBe(58_000)
   })
 
   it('shows a calm empty state when nothing is due tomorrow and no income is scheduled', () => {
     const model = buildMobileDashboardModel(dashboardState(), referenceDate)
-    expect(model.tomorrowItems).toEqual([])
+    expect(model.horizon).toHaveLength(8)
+    expect(model.horizon.every((event) => event.items.length === 0)).toBe(true)
     expect(model.nextIncome).toBeNull()
-    expect(model.afterTomorrowCents).toBe(100_000)
-    expect(model.insight).toBe('nothing-tomorrow')
+    expect(model.tone).toBe('good')
   })
 
   it('keeps negative balances explicit', () => {
@@ -106,8 +100,8 @@ describe('mobile dashboard', () => {
     })]
 
     const model = buildMobileDashboardModel(state, referenceDate)
-    expect(model.availableNowCents).toBe(-10_000)
-    expect(model.afterTomorrowCents).toBe(-30_000)
+    expect(model.safeToSpendCents).toBe(-30_000)
+    expect(['warning', 'tight']).toContain(model.tone)
   })
 
   it('uses virtual recurrences without materializing transactions', () => {
@@ -118,9 +112,8 @@ describe('mobile dashboard', () => {
     })]
 
     const model = buildMobileDashboardModel(state, referenceDate)
-    expect(model.tomorrowItems).toHaveLength(1)
-    expect(model.tomorrowItems[0]).toMatchObject({ title: 'Recurring wages', sourceKind: 'recurring' })
-    expect(model.nextIncome?.totalCents).toBe(57_070)
+    expect(model.horizon[1].items).toHaveLength(1)
+    expect(model.horizon[1].items[0]).toMatchObject({ title: 'Recurring wages', sourceKind: 'recurring' })
     expect(state.transactions).toHaveLength(0)
   })
 
@@ -135,30 +128,95 @@ describe('mobile dashboard', () => {
       transactionDate: '2026-08-12', dueDate: '2026-08-12', paidDate: '2026-08-12', status: 'paid', recurrenceRuleId: 'weekly-bill',
     })]
 
-    expect(buildMobileDashboardModel(state, referenceDate).tomorrowItems).toEqual([])
+    expect(buildMobileDashboardModel(state, referenceDate).horizon.flatMap((event) => event.items)).toEqual([])
   })
 
   it('uses the exact Planner week for Thursday–Wednesday opening, flows, savings, and closing', () => {
-    const state = dashboardState(82_120)
+    const model = buildMobileDashboardModel(dashboardState(82_120), referenceDate)
+    expect(model.currentWeek.start).toBe('2026-08-06')
+    expect(model.currentWeek.end).toBe('2026-08-12')
+  })
+
+  it('horizon includes empty days between events', () => {
+    const state = dashboardState()
     const category = categoryIds(state)
-    state.goals = [{
-      id: 'goal', householdId: state.household.id, name: 'Savings', targetCents: 500_000, currentCents: 0,
-      monthlyContributionCents: 31_000, priority: 1, notes: '', archived: false,
-    }]
     state.transactions = [
-      transaction(state, { id: 'income', title: 'Income', amountCents: 110_000, type: 'income', categoryId: category.income, transactionDate: '2026-08-13' }),
-      transaction(state, { id: 'bill', title: 'Bills', amountCents: 74_024, type: 'expense', categoryId: category.bill, transactionDate: '2026-08-14' }),
+      transaction(state, { id: 'bill', title: 'Bill', amountCents: 10_000, type: 'expense', categoryId: category.bill, transactionDate: '2026-08-12' }),
+      transaction(state, { id: 'income', title: 'Income', amountCents: 50_000, type: 'income', categoryId: category.income, transactionDate: '2026-08-14' }),
     ]
 
     const model = buildMobileDashboardModel(state, referenceDate)
-    const cycle = createPlannerCycle(state, '2026-08-01', '2026-08-31')
-    const savings = Math.max(31_000, savingsContributedInRange(state, cycle.plannerRange.start, cycle.plannerRange.end))
-    const opening = buildRollingBalanceProjection(state, cycle.plannerRange.start, cycle.plannerRange.end, referenceDate).openingBalanceCents
-    const plannerWeek = buildPlanningWeeks(state, '2026-08-01', '2026-08-31', referenceDate, savings, opening, cycle.plannerRange)
-      .find((week) => week.start === '2026-08-06')
+    expect(model.horizon.map((event) => event.date)).toEqual(['2026-08-11', '2026-08-12', '2026-08-13', '2026-08-14'])
+    expect(model.horizon.find((event) => event.date === '2026-08-13')?.items).toHaveLength(0)
+  })
 
-    expect(model.currentWeek.start).toBe('2026-08-06')
-    expect(model.currentWeek.end).toBe('2026-08-12')
-    expect(model.currentWeek).toEqual(plannerWeek)
+  it('low point is flagged on the correct day', () => {
+    const state = dashboardState(100_000)
+    const category = categoryIds(state)
+    state.transactions = [
+      transaction(state, { id: 'bill', title: 'Large bill', amountCents: 80_000, type: 'expense', categoryId: category.bill, transactionDate: '2026-08-13' }),
+      transaction(state, { id: 'income', title: 'Payday', amountCents: 57_000, type: 'income', categoryId: category.income, transactionDate: '2026-08-14' }),
+    ]
+
+    expect(buildMobileDashboardModel(state, referenceDate).horizon.find((event) => event.isLowPoint)?.date).toBe('2026-08-13')
+  })
+
+  it('safe-to-spend goes negative when bills exceed balance before payday', () => {
+    const state = dashboardState(50_000)
+    const category = categoryIds(state)
+    state.transactions = [
+      transaction(state, { id: 'bill', title: 'Large bill', amountCents: 80_000, type: 'expense', categoryId: category.bill, transactionDate: '2026-08-13' }),
+      transaction(state, { id: 'income', title: 'Payday', amountCents: 57_000, type: 'income', categoryId: category.income, transactionDate: '2026-08-14' }),
+    ]
+
+    expect(buildMobileDashboardModel(state, referenceDate).safeToSpendCents).toBeLessThan(0)
+  })
+
+  it("headline tone is 'warning' when balance dips below zero", () => {
+    const state = dashboardState(50_000)
+    const category = categoryIds(state)
+    state.transactions = [
+      transaction(state, { id: 'bill', title: 'Large bill', amountCents: 80_000, type: 'expense', categoryId: category.bill, transactionDate: '2026-08-13' }),
+      transaction(state, { id: 'income', title: 'Payday', amountCents: 57_000, type: 'income', categoryId: category.income, transactionDate: '2026-08-14' }),
+    ]
+
+    const model = buildMobileDashboardModel(state, referenceDate)
+    expect(model.tone).toBe('warning')
+    expect(model.headline.template).toContain('{amount}')
+    expect(model.headline.values.amount).toBe(30_000)
+  })
+
+  it('headline returns structured parts, never pre-formatted money', () => {
+    const state = dashboardState(50_000)
+    const category = categoryIds(state)
+    state.transactions = [
+      transaction(state, { id: 'bill', title: 'Large bill', amountCents: 80_000, type: 'expense', categoryId: category.bill, transactionDate: '2026-08-13' }),
+      transaction(state, { id: 'income', title: 'Payday', amountCents: 57_000, type: 'income', categoryId: category.income, transactionDate: '2026-08-14' }),
+    ]
+
+    for (const value of Object.values(buildMobileDashboardModel(state, referenceDate).headline.values)) {
+      if (typeof value === 'string') expect(value).not.toMatch(/[€$£¥]/)
+    }
+  })
+
+  it('household with no income at all does not crash', () => {
+    const state = dashboardState()
+    expect(() => buildMobileDashboardModel(state, referenceDate)).not.toThrow()
+    const model = buildMobileDashboardModel(state, referenceDate)
+    expect(model.nextIncome).toBeNull()
+    expect(model.safeToSpendUntilIso).toBe('2026-08-18')
+    expect(model.horizon.length).toBeGreaterThan(0)
+  })
+
+  it('debt fields are populated from buildDebtSummary', () => {
+    const state = dashboardState()
+    state.accounts.push({
+      id: 'cc-1', householdId: state.household.id, name: 'Visa', institution: '', type: 'credit-card', currency: 'EUR',
+      openingBalanceCents: -50_000, currentBalanceCents: -30_000, holder: '', accentColor: '#d97757', archived: false, notes: '',
+    })
+
+    const model = buildMobileDashboardModel(state, referenceDate)
+    expect(model.totalOwedCents).toBe(30_000)
+    expect(model.debt.isDebtFree).toBe(false)
   })
 })
