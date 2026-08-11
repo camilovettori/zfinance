@@ -1,4 +1,4 @@
-import { addDays, differenceInCalendarDays, endOfMonth, startOfMonth } from 'date-fns'
+import { addDays, differenceInCalendarDays, endOfMonth, getDaysInMonth, startOfMonth } from 'date-fns'
 import { buildRollingBalanceProjection, currentSpendableBalance } from '@/domain/cashflow'
 import { buildDebtSummary, type DebtSummary } from '@/domain/debt'
 import { buildVisibleItems, type SimpleItem } from '@/domain/home'
@@ -177,6 +177,22 @@ export function buildMobileDashboardModel(state: AppState, referenceDate = new D
   const horizon = buildHorizon(state, today, safeToSpendUntilIso, availableNowCents, referenceDate)
   const lowPointEntry = horizon.find((day) => day.isLowPoint) ?? horizon[0]
 
+  const safeToSpendUntilDate = fromIsoDate(safeToSpendUntilIso)
+  const untilWithinWeek = differenceInCalendarDays(safeToSpendUntilDate, localToday) <= 7
+  const untilWeekday = new Intl.DateTimeFormat(state.settings.locale, { weekday: 'long' }).format(safeToSpendUntilDate)
+  const safeToSpendUntilLabel = untilWithinWeek ? `until ${untilWeekday}` : `until next ${untilWeekday}`
+
+  const horizonBillsCents = sum(horizon.map((day) => day.billsCents))
+  const monthlyGoalContributionsCents = sum(state.goals.filter((goal) => !goal.archived).map((goal) => goal.monthlyContributionCents))
+  const horizonDays = differenceInCalendarDays(safeToSpendUntilDate, localToday) + 1
+  const savingsAllocationCents = Math.round(monthlyGoalContributionsCents * horizonDays / getDaysInMonth(referenceDate))
+  const safeToSpendCents = availableNowCents - horizonBillsCents - savingsAllocationCents
+
+  const runwayWindow = buildRollingBalanceProjection(state, today, toIsoDate(addDays(localToday, 89)), referenceDate)
+  const firstNegativeIndex = runwayWindow.days.findIndex((day) => day.closingBalanceCents < 0)
+  const runwayIsInfinite = firstNegativeIndex === -1
+  const runwayDays = runwayIsInfinite ? 90 : firstNegativeIndex
+
   return {
     todayIso: today,
     tomorrowIso: tomorrow,
@@ -191,11 +207,11 @@ export function buildMobileDashboardModel(state: AppState, referenceDate = new D
     insight,
     totalOwedCents: debt.totalOwedCents,
     netWorthCents: availableNowCents - debt.totalOwedCents,
-    safeToSpendCents: 0,
+    safeToSpendCents,
     safeToSpendUntilIso,
-    safeToSpendUntilLabel: '',
-    runwayDays: 0,
-    runwayIsInfinite: false,
+    safeToSpendUntilLabel,
+    runwayDays,
+    runwayIsInfinite,
     horizon,
     lowPointCents: lowPointEntry?.balanceAfterCents ?? 0,
     lowPointDateIso: lowPointEntry?.date ?? null,

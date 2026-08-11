@@ -137,3 +137,56 @@ describe('buildMobileDashboardModel — debt and net worth wiring', () => {
     expect(model.debt.totalOwedCents).toBe(40_000)
   })
 })
+
+describe('buildMobileDashboardModel — safe to spend and runway (Act 1)', () => {
+  it('computes safe-to-spend as balance minus horizon bills minus prorated savings, never clamped', () => {
+    const appState = state(100_000)
+    const category = categoryIds(appState)
+    appState.goals = [{
+      id: 'goal', householdId: appState.household.id, name: 'Holiday', targetCents: 500_000, currentCents: 0,
+      monthlyContributionCents: 31_000, priority: 1, notes: '', archived: false,
+    }]
+    appState.transactions = [
+      transaction(appState, { id: 'income', title: 'Wages', amountCents: 50_000, type: 'income', categoryId: category.income, transactionDate: '2026-08-13' }),
+      transaction(appState, { id: 'bill', title: 'Rent', amountCents: 70_000, type: 'expense', categoryId: category.bill, transactionDate: '2026-08-12' }),
+    ]
+
+    const model = buildMobileDashboardModel(appState, referenceDate)
+
+    // horizon: today 2026-08-11 -> next income 2026-08-13, 3 days. Bills in horizon: 70_000.
+    // savings: 31_000 * 3 / 31 (August has 31 days) = 3000 rounded.
+    expect(model.safeToSpendCents).toBe(100_000 - 70_000 - 3_000)
+  })
+
+  it('does not clamp a negative safe-to-spend value', () => {
+    const appState = state(10_000)
+    const category = categoryIds(appState)
+    appState.transactions = [
+      transaction(appState, { id: 'bill', title: 'Rent', amountCents: 40_000, type: 'expense', categoryId: category.bill, transactionDate: '2026-08-12' }),
+    ]
+
+    const model = buildMobileDashboardModel(appState, referenceDate)
+
+    expect(model.safeToSpendCents).toBeLessThan(0)
+  })
+
+  it('reports runwayDays as the first day a 90-day projection goes negative', () => {
+    const appState = state(10_000)
+    const category = categoryIds(appState)
+    appState.transactions = [
+      transaction(appState, { id: 'bill', title: 'Rent', amountCents: 40_000, type: 'expense', categoryId: category.bill, transactionDate: '2026-08-14' }),
+    ]
+
+    const model = buildMobileDashboardModel(appState, referenceDate)
+
+    expect(model.runwayIsInfinite).toBe(false)
+    expect(model.runwayDays).toBe(3) // 08-11=0, 08-12=1, 08-13=2, 08-14=3 -> first negative day index 3
+  })
+
+  it('reports runwayIsInfinite when the balance never goes negative in 90 days', () => {
+    const model = buildMobileDashboardModel(state(500_000), referenceDate)
+
+    expect(model.runwayIsInfinite).toBe(true)
+    expect(model.runwayDays).toBe(90)
+  })
+})
