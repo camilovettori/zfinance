@@ -1,11 +1,26 @@
 import { addDays, differenceInCalendarDays, endOfMonth, startOfMonth } from 'date-fns'
 import { buildRollingBalanceProjection, currentSpendableBalance } from '@/domain/cashflow'
+import { buildDebtSummary, type DebtSummary } from '@/domain/debt'
 import { buildVisibleItems, type SimpleItem } from '@/domain/home'
 import type { AppState } from '@/domain/model'
 import { buildPlanningWeeks, createPlannerCycle, savingsContributedInRange, type PlanningWeek } from '@/domain/planning'
 import { fromIsoDate, toIsoDate } from '@/lib/date'
 
+export type MoneyEvent = {
+  date: string
+  dayLabel: string
+  isToday: boolean
+  items: SimpleItem[]
+  incomeCents: number
+  billsCents: number
+  netCents: number
+  balanceAfterCents: number
+  isLowPoint: boolean
+  isNegative: boolean
+}
+
 export type MobileDashboardModel = {
+  // existing fields, unchanged — MobileDashboard.tsx still reads these
   todayIso: string
   tomorrowIso: string
   tomorrowLabel: string
@@ -23,9 +38,82 @@ export type MobileDashboardModel = {
   } | null
   currentWeek: PlanningWeek
   insight: 'nothing-tomorrow' | 'tomorrow-covered' | 'week-left' | 'week-short'
+
+  // Act 1 — where I stand
+  totalOwedCents: number
+  netWorthCents: number
+  safeToSpendCents: number
+  safeToSpendUntilIso: string
+  safeToSpendUntilLabel: string
+  runwayDays: number
+  runwayIsInfinite: boolean
+
+  // Act 2 — what comes next
+  horizon: MoneyEvent[]
+  lowPointCents: number
+  lowPointDateIso: string | null
+
+  // Act 3 — where I'm heading
+  debt: DebtSummary
+  goals: Array<{
+    id: string
+    name: string
+    currentCents: number
+    targetCents: number
+    percent: number
+    targetDate?: string
+    monthsToTarget: number | null
+  }>
+
+  // narrative
+  headline: { template: string; values: Record<string, number | string> }
+  tone: 'good' | 'tight' | 'warning'
 }
 
 const sum = (values: number[]) => values.reduce((total, value) => total + value, 0)
+
+function buildHorizon(state: AppState, todayIso: string, horizonEndIso: string, availableNowCents: number, referenceDate: Date): MoneyEvent[] {
+  const items = buildVisibleItems(state, todayIso, horizonEndIso, referenceDate).filter((item) => item.status !== 'completed')
+  const start = fromIsoDate(todayIso)
+  const end = fromIsoDate(horizonEndIso)
+  const dayCount = Math.min(14, differenceInCalendarDays(end, start) + 1)
+  const tomorrowIso = toIsoDate(addDays(start, 1))
+
+  let runningBalance = availableNowCents
+  const days: MoneyEvent[] = []
+  for (let index = 0; index < dayCount; index += 1) {
+    const date = addDays(start, index)
+    const dateIso = toIsoDate(date)
+    const dayItems = items.filter((item) => item.date === dateIso)
+    const incomeCents = sum(dayItems.filter((item) => item.kind === 'income').map((item) => item.amountCents))
+    const billsCents = sum(dayItems.filter((item) => item.kind === 'bill').map((item) => item.amountCents))
+    const netCents = incomeCents - billsCents
+    runningBalance += netCents
+    const dayLabel = dateIso === todayIso ? 'Today' : dateIso === tomorrowIso ? 'Tomorrow'
+      : new Intl.DateTimeFormat(state.settings.locale, { weekday: 'short', day: 'numeric', month: 'short' }).format(date)
+
+    days.push({
+      date: dateIso,
+      dayLabel,
+      isToday: dateIso === todayIso,
+      items: dayItems,
+      incomeCents,
+      billsCents,
+      netCents,
+      balanceAfterCents: runningBalance,
+      isLowPoint: false,
+      isNegative: runningBalance < 0,
+    })
+  }
+
+  let lowIndex = 0
+  for (let index = 1; index < days.length; index += 1) {
+    if (days[index].balanceAfterCents < days[lowIndex].balanceAfterCents) lowIndex = index
+  }
+  if (days[lowIndex]) days[lowIndex] = { ...days[lowIndex], isLowPoint: true }
+
+  return days
+}
 
 export function buildMobileDashboardModel(state: AppState, referenceDate = new Date()): MobileDashboardModel {
   const localToday = fromIsoDate(toIsoDate(referenceDate))
@@ -84,6 +172,11 @@ export function buildMobileDashboardModel(state: AppState, referenceDate = new D
         ? 'week-left'
         : 'week-short'
 
+  const debt = buildDebtSummary(state, referenceDate)
+  const safeToSpendUntilIso = nextIncome?.date ?? toIsoDate(addDays(localToday, 7))
+  const horizon = buildHorizon(state, today, safeToSpendUntilIso, availableNowCents, referenceDate)
+  const lowPointEntry = horizon.find((day) => day.isLowPoint) ?? horizon[0]
+
   return {
     todayIso: today,
     tomorrowIso: tomorrow,
@@ -96,5 +189,19 @@ export function buildMobileDashboardModel(state: AppState, referenceDate = new D
     nextIncome,
     currentWeek,
     insight,
+    totalOwedCents: debt.totalOwedCents,
+    netWorthCents: availableNowCents - debt.totalOwedCents,
+    safeToSpendCents: 0,
+    safeToSpendUntilIso,
+    safeToSpendUntilLabel: '',
+    runwayDays: 0,
+    runwayIsInfinite: false,
+    horizon,
+    lowPointCents: lowPointEntry?.balanceAfterCents ?? 0,
+    lowPointDateIso: lowPointEntry?.date ?? null,
+    debt,
+    goals: [],
+    headline: { template: '', values: {} },
+    tone: 'good',
   }
 }
