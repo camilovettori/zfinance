@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import {
   DndContext,
   DragOverlay,
@@ -15,6 +15,7 @@ import { GripVertical, Plus } from 'lucide-react'
 import type { SimpleItem } from '@/domain/home'
 import type { FinancialGoal } from '@/domain/model'
 import type { PlannerCycleSummary, PlanningDay, PlanningWeek } from '@/domain/planning'
+import { isIsoBetween, todayIso } from '@/lib/date'
 
 type MoneyFormatter = (amountCents: number) => string
 
@@ -72,6 +73,7 @@ function PlanningDayColumn({ day, locale, money, interactive, onSelect, onAddDay
       className={`planning-day${day.inPeriod ? '' : ' outside-report-period'}${isOver ? ' planner-drop-target' : ''}`}
       data-outside={!day.inPeriod}
       data-date={day.date}
+      data-today={day.date === todayIso()}
       onDoubleClick={() => interactive && onAddDay?.(day.date)}
     >
       <header><strong>{new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(new Date(`${day.date}T12:00:00`))}</strong><span>{new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short' }).format(new Date(`${day.date}T12:00:00`))}</span></header>
@@ -107,11 +109,18 @@ export function MonthlyPlannerView({ weeks, locale, money, monthly = false, inte
     setActiveItem(null)
     if (item && date && item.date !== date) onMove?.(item, date)
   }
+  const listRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const currentWeek = listRef.current?.querySelector('[data-current-week="true"]')
+    currentWeek?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+  }, [weeks])
   const content = (
-    <div className="planning-week-list">
-      {weeks.map((week, weekIndex) => (
-        <section className="planning-week" key={week.start} data-week-start={week.start}>
-          <div className="planning-week-heading"><div><small>{monthly ? `Week ${weekIndex + 1}` : 'Weekly plan'}</small><h3>{week.label}</h3></div><span className={week.closingBalanceCents >= 0 ? 'money-positive' : 'money-negative'}>{money(week.openingBalanceCents)} opening → {money(week.closingBalanceCents)} closing</span></div>
+    <div className="planning-week-list" ref={listRef}>
+      {weeks.map((week, weekIndex) => {
+        const isCurrentWeek = isIsoBetween(todayIso(), week.start, week.end)
+        return (
+        <section className="planning-week" key={week.start} data-week-start={week.start} data-current-week={isCurrentWeek}>
+          <div className="planning-week-heading"><div><small>{isCurrentWeek ? '● Current week' : monthly ? `Week ${weekIndex + 1}` : 'Weekly plan'}</small><h3>{week.label}</h3></div><span className={week.closingBalanceCents >= 0 ? 'money-positive' : 'money-negative'}>{money(week.openingBalanceCents)} opening → {money(week.closingBalanceCents)} closing</span></div>
           <div className="planning-day-grid">
             {week.days.map((day) => <PlanningDayColumn key={day.date} day={day} locale={locale} money={money} interactive={interactive} onSelect={onSelect} onAddDay={onAddDay} />)}
           </div>
@@ -124,7 +133,8 @@ export function MonthlyPlannerView({ weeks, locale, money, monthly = false, inte
             <span><small>Closing balance</small><strong className={week.closingBalanceCents >= 0 ? 'money-positive' : 'money-negative'}>{money(week.closingBalanceCents)}</strong></span>
           </div>
         </section>
-      ))}
+        )
+      })}
     </div>
   )
   if (!interactive) return content
