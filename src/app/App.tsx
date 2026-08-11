@@ -94,6 +94,7 @@ import {
   type CloudSyncSnapshot,
 } from '@/sync'
 import { MonthlyPlannerSummary, MonthlyPlannerView, PlannerSavingsSummary } from './MonthlyPlanner'
+import { MobileDashboard } from './dashboard/MobileDashboard'
 import { DesktopNavigation } from './navigation/DesktopNavigation'
 import { MobileBottomNavigation } from './navigation/MobileBottomNavigation'
 import { SECTION_ITEMS, type SectionKey } from './navigation/sections'
@@ -3271,7 +3272,14 @@ function App() {
         </header>
 
       <main className="app-frame pb-20 pt-6">
-        {activeSection === 'dashboard' ? dashboardView : null}
+        {activeSection === 'dashboard' ? mobileLayout
+          ? <MobileDashboard
+              state={state}
+              onEditItem={openEditTransaction}
+              onAddIncome={() => openQuickTransaction('income', 'Income')}
+              onAddBill={() => openQuickTransaction('bill', 'Expense')}
+            />
+          : dashboardView : null}
         {activeSection === 'planner' ? plannerSection : null}
         {activeSection === 'week' ? weekView : null}
         {activeSection === 'calendar' ? monthCalendar : null}

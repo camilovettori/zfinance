@@ -935,6 +935,82 @@ textarea {
   .dashboard-stat-grid { grid-template-columns: 1fr; }
   .stat-mini-card { min-height: 160px; }
   .report-metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+  .mobile-dashboard { display: grid; width: min(100%, 680px); gap: 14px; margin: 0 auto; color: var(--text); }
+  .mobile-dashboard article { min-width: 0; border: 1px solid color-mix(in srgb, var(--border) 72%, transparent); border-radius: 22px; background: var(--surface-strong); box-shadow: 0 8px 24px rgba(67, 58, 43, 0.055); }
+  .mobile-dashboard-header { display: flex; min-height: 54px; align-items: center; justify-content: space-between; gap: 16px; padding: 0 3px 2px; }
+  .mobile-dashboard-header p,
+  .mobile-dashboard-header h1 { margin: 0; }
+  .mobile-dashboard-header p { color: var(--accent); font-size: 0.7rem; font-weight: 850; letter-spacing: 0.17em; text-transform: uppercase; }
+  .mobile-dashboard-header h1 { margin-top: 4px; color: var(--text); font-size: clamp(1.5rem, 7vw, 2rem); line-height: 1.05; letter-spacing: -0.045em; }
+  .mobile-dashboard-header time { flex: 0 0 auto; color: var(--muted); font-size: 0.74rem; }
+
+  .mobile-now-card { position: relative; overflow: hidden; padding: 23px 22px 20px; background: linear-gradient(145deg, color-mix(in srgb, var(--accent-soft) 68%, var(--surface-strong)), var(--surface-strong) 68%) !important; }
+  .mobile-now-card::after { position: absolute; top: -54px; right: -58px; width: 150px; height: 150px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 9%, transparent); content: ''; }
+  .mobile-now-card > p { position: relative; z-index: 1; margin: 0; color: var(--accent-strong); font-size: 0.72rem; font-weight: 800; letter-spacing: 0.13em; text-transform: uppercase; }
+  .mobile-now-card > strong { position: relative; z-index: 1; display: block; margin-top: 9px; color: var(--text); font-size: clamp(2.6rem, 13vw, 4.1rem); font-weight: 820; line-height: 1; letter-spacing: -0.065em; font-variant-numeric: tabular-nums; }
+  .mobile-now-card > div { position: relative; z-index: 1; display: flex; min-height: var(--touch-target); align-items: center; justify-content: space-between; gap: 14px; margin-top: 21px; border-top: 1px solid color-mix(in srgb, var(--accent) 17%, var(--border)); padding-top: 15px; }
+  .mobile-now-card > div span { color: var(--muted); font-size: 0.76rem; }
+  .mobile-now-card > div b { color: var(--text); font-size: 0.85rem; text-align: right; font-variant-numeric: tabular-nums; }
+
+  .mobile-tomorrow-card { padding: 19px 18px 16px; }
+  .mobile-tomorrow-card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .mobile-tomorrow-card > header p,
+  .mobile-tomorrow-card > header h2 { margin: 0; }
+  .mobile-tomorrow-card > header p,
+  .mobile-next-income-card p,
+  .mobile-week-card > header p { color: var(--accent-strong); font-size: 0.7rem; font-weight: 820; letter-spacing: 0.13em; text-transform: uppercase; }
+  .mobile-tomorrow-card > header h2,
+  .mobile-next-income-card h2,
+  .mobile-week-card > header h2 { margin-top: 4px; color: var(--text); font-size: 1.12rem; letter-spacing: -0.025em; }
+  .mobile-tomorrow-card > header > span { display: grid; min-width: 30px; height: 30px; place-items: center; border-radius: 10px; background: var(--surface-muted); color: var(--muted); font-size: 0.72rem; font-weight: 800; }
+  .mobile-tomorrow-list { display: grid; margin-top: 12px; }
+  .mobile-tomorrow-list > button { display: grid; min-height: 58px; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 10px; border: 0; border-bottom: 1px solid color-mix(in srgb, var(--border) 75%, transparent); background: transparent; padding: 7px 0; color: var(--text); text-align: left; }
+  .mobile-tomorrow-list > button:last-of-type { border-bottom: 0; }
+  .mobile-tomorrow-list > button > span:nth-child(2) { min-width: 0; }
+  .mobile-tomorrow-list > button strong,
+  .mobile-tomorrow-list > button small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-tomorrow-list > button strong { font-size: 0.88rem; }
+  .mobile-tomorrow-list > button small { margin-top: 2px; color: var(--muted); font-size: 0.68rem; }
+  .mobile-tomorrow-list > button > b { font-size: 0.86rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .mobile-money-icon { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 11px; }
+  .mobile-money-icon.income { background: var(--accent-soft); color: var(--accent-strong); }
+  .mobile-money-icon.bill { background: color-mix(in srgb, var(--warning) 12%, var(--surface-strong)); color: var(--warning); }
+  .mobile-more-items,
+  .mobile-tomorrow-empty { margin: 11px 0 2px; color: var(--muted); font-size: 0.78rem; }
+  .mobile-tomorrow-empty { border-radius: 14px; background: var(--surface-muted); padding: 17px; text-align: center; }
+  .mobile-tomorrow-card > footer { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-top: 14px; border-top: 1px solid var(--border); padding-top: 13px; }
+  .mobile-tomorrow-card > footer span { min-width: 0; color: var(--muted); font-size: 0.66rem; }
+  .mobile-tomorrow-card > footer b { display: block; overflow: hidden; margin-top: 4px; color: var(--text); font-size: 0.76rem; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+
+  .mobile-next-income-card { display: flex; min-height: 112px; align-items: center; justify-content: space-between; gap: 18px; padding: 18px; background: linear-gradient(135deg, var(--surface-strong), color-mix(in srgb, var(--accent-soft) 48%, var(--surface-strong))) !important; }
+  .mobile-next-income-card p,
+  .mobile-next-income-card h2,
+  .mobile-next-income-card span { margin: 0; }
+  .mobile-next-income-card span { display: block; margin-top: 4px; color: var(--muted); font-size: 0.72rem; }
+  .mobile-next-income-card > div:last-child { flex: 0 0 auto; text-align: right; }
+  .mobile-next-income-card small { display: block; color: var(--muted); font-size: 0.7rem; }
+  .mobile-next-income-card > div:last-child strong { display: block; margin-top: 5px; font-size: 1.08rem; font-variant-numeric: tabular-nums; }
+
+  .mobile-week-card { padding: 19px 18px 17px; }
+  .mobile-week-card > header p,
+  .mobile-week-card > header h2 { margin: 0; }
+  .mobile-week-opening,
+  .mobile-week-savings { display: flex; min-height: var(--touch-target); align-items: center; justify-content: space-between; gap: 16px; color: var(--muted); font-size: 0.78rem; }
+  .mobile-week-opening { margin-top: 14px; border-bottom: 1px solid var(--border); }
+  .mobile-week-opening strong,
+  .mobile-week-savings strong { color: var(--text); font-size: 0.88rem; font-variant-numeric: tabular-nums; }
+  .mobile-week-flows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; padding: 12px 0; }
+  .mobile-week-flows span { border-radius: 15px; background: var(--surface-muted); padding: 13px; color: var(--muted); font-size: 0.7rem; }
+  .mobile-week-flows strong { display: block; margin-top: 7px; font-size: 1rem; font-variant-numeric: tabular-nums; }
+  .mobile-week-savings { border-top: 1px solid var(--border); }
+  .mobile-week-card > footer { display: flex; min-height: 88px; align-items: center; justify-content: space-between; gap: 16px; margin: 10px -4px 0; border-radius: 17px; background: var(--accent-soft); padding: 17px; }
+  .mobile-week-card > footer span { color: var(--accent-strong); font-size: 0.76rem; font-weight: 750; }
+  .mobile-week-card > footer strong { color: var(--text); font-size: clamp(1.55rem, 8vw, 2.15rem); letter-spacing: -0.045em; font-variant-numeric: tabular-nums; }
+  .mobile-financial-signal { margin: 13px 2px 0; color: var(--muted); font-size: 0.76rem; text-align: center; }
+
+  .mobile-dashboard-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .mobile-dashboard-actions button { display: inline-flex; min-height: var(--touch-target); align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--border); border-radius: 15px; background: var(--surface-strong); color: var(--text); font-size: 0.8rem; font-weight: 750; box-shadow: var(--shadow-soft); }
 }
 
 @media (max-width: 760px) {
