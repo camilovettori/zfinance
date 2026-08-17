@@ -65,7 +65,7 @@ function recurringRule(state: AppState, values: Pick<RecurringRule, 'id' | 'name
 }
 
 describe('mobile dashboard model', () => {
-  it('renders the safe-to-spend label without duplicating "until"', () => {
+  it('renders Available now and After tomorrow without removed hero language', () => {
     const state = dashboardState()
     const category = categoryIds(state)
     state.transactions = [transaction(state, {
@@ -74,8 +74,11 @@ describe('mobile dashboard model', () => {
 
     render(<MobileDashboard state={state} referenceDate={referenceDate} onEditItem={vi.fn()} onAddIncome={vi.fn()} onAddBill={vi.fn()} />)
 
-    expect(screen.getByText('Safe to spend until Thursday')).not.toBeNull()
-    expect(screen.queryByText(/until until/i)).toBeNull()
+    expect(screen.getByText('Available now')).not.toBeNull()
+    expect(screen.getByText('After tomorrow')).not.toBeNull()
+    expect(screen.queryByText(/Safe to spend/i)).toBeNull()
+    expect(screen.queryByText(/Committed first/i)).toBeNull()
+    expect(screen.queryByText(/Then income/i)).toBeNull()
   })
 
   it('renders tomorrow, after-tomorrow balance, and grouped next income', () => {
@@ -96,15 +99,14 @@ describe('mobile dashboard model', () => {
       .toEqual(['Iris Wages', 'Partner Wages', 'Electricity'])
     expect(model.nextIncome?.items).toHaveLength(2)
     expect(model.nextIncome?.totalCents).toBe(110_622)
-    expect(model.safeToSpendCents).toBe(58_000)
+    expect(model.afterTomorrowCents).toBe(170_622)
   })
 
   it('shows a calm empty state when nothing is due tomorrow and no income is scheduled', () => {
     const model = buildMobileDashboardModel(dashboardState(), referenceDate)
-    expect(model.horizon).toHaveLength(8)
+    expect(model.horizon).toHaveLength(7)
     expect(model.horizon.every((event) => event.items.length === 0)).toBe(true)
     expect(model.nextIncome).toBeNull()
-    expect(model.tone).toBe('good')
   })
 
   it('keeps negative balances explicit', () => {
@@ -115,8 +117,7 @@ describe('mobile dashboard model', () => {
     })]
 
     const model = buildMobileDashboardModel(state, referenceDate)
-    expect(model.safeToSpendCents).toBe(-30_000)
-    expect(['warning', 'tight']).toContain(model.tone)
+    expect(model.afterTomorrowCents).toBe(-30_000)
   })
 
   it('uses virtual recurrences without materializing transactions', () => {
@@ -143,13 +144,22 @@ describe('mobile dashboard model', () => {
       transactionDate: '2026-08-12', dueDate: '2026-08-12', paidDate: '2026-08-12', status: 'paid', recurrenceRuleId: 'weekly-bill',
     })]
 
-    expect(buildMobileDashboardModel(state, referenceDate).horizon.flatMap((event) => event.items)).toEqual([])
+    const model = buildMobileDashboardModel(state, referenceDate)
+    expect(model.horizon.flatMap((event) => event.items)).toEqual([])
+    expect(model.afterTomorrowCents).toBe(100_000)
   })
 
   it('uses the exact Planner week for Thursday–Wednesday opening, flows, savings, and closing', () => {
     const model = buildMobileDashboardModel(dashboardState(82_120), referenceDate)
     expect(model.currentWeek.start).toBe('2026-08-06')
     expect(model.currentWeek.end).toBe('2026-08-12')
+    expect(model.currentWeek).toMatchObject({
+      openingBalanceCents: 82_120,
+      incomeCents: 0,
+      expenseCents: 0,
+      plannedSavingsCents: 0,
+      closingBalanceCents: 82_120,
+    })
   })
 
   it('horizon includes empty days between events', () => {
@@ -161,7 +171,7 @@ describe('mobile dashboard model', () => {
     ]
 
     const model = buildMobileDashboardModel(state, referenceDate)
-    expect(model.horizon.map((event) => event.date)).toEqual(['2026-08-11', '2026-08-12', '2026-08-13', '2026-08-14'])
+    expect(model.horizon.slice(0, 4).map((event) => event.date)).toEqual(['2026-08-11', '2026-08-12', '2026-08-13', '2026-08-14'])
     expect(model.horizon.find((event) => event.date === '2026-08-13')?.items).toHaveLength(0)
   })
 
@@ -176,7 +186,7 @@ describe('mobile dashboard model', () => {
     expect(buildMobileDashboardModel(state, referenceDate).horizon.find((event) => event.isLowPoint)?.date).toBe('2026-08-13')
   })
 
-  it('safe-to-spend goes negative when bills exceed balance before payday', () => {
+  it('After tomorrow ignores movements after tomorrow', () => {
     const state = dashboardState(50_000)
     const category = categoryIds(state)
     state.transactions = [
@@ -184,34 +194,7 @@ describe('mobile dashboard model', () => {
       transaction(state, { id: 'income', title: 'Payday', amountCents: 57_000, type: 'income', categoryId: category.income, transactionDate: '2026-08-14' }),
     ]
 
-    expect(buildMobileDashboardModel(state, referenceDate).safeToSpendCents).toBeLessThan(0)
-  })
-
-  it("headline tone is 'warning' when balance dips below zero", () => {
-    const state = dashboardState(50_000)
-    const category = categoryIds(state)
-    state.transactions = [
-      transaction(state, { id: 'bill', title: 'Large bill', amountCents: 80_000, type: 'expense', categoryId: category.bill, transactionDate: '2026-08-13' }),
-      transaction(state, { id: 'income', title: 'Payday', amountCents: 57_000, type: 'income', categoryId: category.income, transactionDate: '2026-08-14' }),
-    ]
-
-    const model = buildMobileDashboardModel(state, referenceDate)
-    expect(model.tone).toBe('warning')
-    expect(model.headline.template).toContain('{amount}')
-    expect(model.headline.values.amount).toBe(30_000)
-  })
-
-  it('headline returns structured parts, never pre-formatted money', () => {
-    const state = dashboardState(50_000)
-    const category = categoryIds(state)
-    state.transactions = [
-      transaction(state, { id: 'bill', title: 'Large bill', amountCents: 80_000, type: 'expense', categoryId: category.bill, transactionDate: '2026-08-13' }),
-      transaction(state, { id: 'income', title: 'Payday', amountCents: 57_000, type: 'income', categoryId: category.income, transactionDate: '2026-08-14' }),
-    ]
-
-    for (const value of Object.values(buildMobileDashboardModel(state, referenceDate).headline.values)) {
-      if (typeof value === 'string') expect(value).not.toMatch(/[€$£¥]/)
-    }
+    expect(buildMobileDashboardModel(state, referenceDate).afterTomorrowCents).toBe(50_000)
   })
 
   it('household with no income at all does not crash', () => {
@@ -219,8 +202,7 @@ describe('mobile dashboard model', () => {
     expect(() => buildMobileDashboardModel(state, referenceDate)).not.toThrow()
     const model = buildMobileDashboardModel(state, referenceDate)
     expect(model.nextIncome).toBeNull()
-    expect(model.safeToSpendUntilIso).toBe('2026-08-18')
-    expect(model.horizon.length).toBeGreaterThan(0)
+    expect(model.horizon).toHaveLength(7)
   })
 
   it('debt fields are populated from buildDebtSummary', () => {

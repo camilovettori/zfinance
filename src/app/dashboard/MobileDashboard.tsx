@@ -53,12 +53,6 @@ export function MobileDashboard({
   const todayItems = today?.items ?? []
   const todayOutstanding = todayItems.filter((item) => item.status !== 'completed')
 
-  // Everything already owed before the next income lands: the reason
-  // "safe to spend" is smaller than the raw balance.
-  const committedCents = Math.max(0, model.availableNowCents - model.safeToSpendCents)
-  const freePercent = model.availableNowCents > 0
-    ? Math.max(4, Math.min(96, Math.round((model.safeToSpendCents / model.availableNowCents) * 100)))
-    : 4
   const maxDayFlow = Math.max(1, ...horizon.map((event) => Math.max(event.incomeCents, event.billsCents)))
   const closingCents = horizon.length ? horizon[horizon.length - 1].balanceAfterCents : model.availableNowCents
 
@@ -70,20 +64,15 @@ export function MobileDashboard({
       </time>
     </header>
 
-    <article className="mobile-safe-card" data-tone={model.tone}>
-      <p>Safe to spend {model.safeToSpendUntilLabel}</p>
-      <strong className={model.safeToSpendCents < 0 ? 'money-negative' : ''}>{money(model.safeToSpendCents)}</strong>
-      <div className="mobile-safe-bar" role="presentation">
-        <span style={{ width: `${freePercent}%` }} />
-        <span />
+    <article className="mobile-balance-card" data-tone={model.afterTomorrowCents < 0 ? 'warning' : 'good'}>
+      <div className="mobile-balance-primary">
+        <p>Available now</p>
+        <strong className={model.availableNowCents < 0 ? 'money-negative' : ''}>{money(model.availableNowCents)}</strong>
       </div>
-      <footer>
-        <span><small>Committed first</small><b className="money-negative">{money(committedCents)}</b></span>
-        <span>
-          <small>{model.nextIncome ? 'Then income' : 'No income scheduled'}</small>
-          <b className="money-positive">{model.nextIncome ? signedMoney(model.nextIncome.totalCents, 'income') : '—'}</b>
-        </span>
-      </footer>
+      <div className="mobile-balance-secondary">
+        <p>After tomorrow</p>
+        <strong className={model.afterTomorrowCents < 0 ? 'money-negative' : ''}>{money(model.afterTomorrowCents)}</strong>
+      </div>
     </article>
 
     <article className="mobile-today-card">

@@ -41,19 +41,14 @@
 }
 .mobile-nav-add:active { transform: scale(0.96); }
 
-/* ---------- Dashboard: one hero number ---------- */
-.mobile-safe-card { display: grid; gap: 14px; padding: 22px; }
-.mobile-safe-card > p { color: var(--muted); font-size: 0.8rem; font-weight: 650; }
-.mobile-safe-card > strong { font-size: 2.6rem; font-weight: 780; letter-spacing: -0.035em; line-height: 1; font-variant-numeric: tabular-nums; }
-.mobile-safe-bar { display: flex; height: 8px; overflow: hidden; border-radius: 999px; background: var(--surface-muted); }
-.mobile-safe-bar > span:first-child { background: var(--accent); }
-.mobile-safe-bar > span:last-child { flex: 1; background: color-mix(in srgb, var(--warning) 42%, var(--surface-muted)); }
-.mobile-safe-card > footer { display: flex; justify-content: space-between; gap: 12px; }
-.mobile-safe-card > footer span { display: grid; gap: 3px; }
-.mobile-safe-card > footer span:last-child { text-align: right; }
-.mobile-safe-card > footer small { color: var(--muted); font-size: 0.66rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
-.mobile-safe-card > footer b { font-size: 0.95rem; font-weight: 750; font-variant-numeric: tabular-nums; }
-.mobile-safe-card[data-tone='warning'] > strong { color: var(--danger); }
+/* ---------- Dashboard: current balance and tomorrow-only movement ---------- */
+.mobile-balance-card { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 18px; align-items: end; padding: 22px; }
+.mobile-balance-card > div { display: grid; min-width: 0; gap: 7px; }
+.mobile-balance-card > div + div { border-left: 1px solid var(--border); padding-left: 18px; }
+.mobile-balance-card p { color: var(--muted); font-size: 0.68rem; font-weight: 750; letter-spacing: 0.06em; text-transform: uppercase; }
+.mobile-balance-card strong { overflow-wrap: anywhere; font-size: clamp(1.25rem, 5.8vw, 1.7rem); font-weight: 780; letter-spacing: -0.035em; line-height: 1; font-variant-numeric: tabular-nums; }
+.mobile-balance-primary strong { font-size: clamp(1.85rem, 8vw, 2.6rem); }
+.mobile-balance-card[data-tone='warning'] .mobile-balance-secondary strong { color: var(--danger); }
 
 /* ---------- Due today: status is a tap, not a dialog ---------- */
 .mobile-today-card { display: grid; gap: 12px; padding: 18px; }

@@ -20,7 +20,9 @@ for (const viewport of [
   test(`mobile shell and Planner fit ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport)
     await loadSampleHousehold(page)
-    await expect(page.getByText(/^Safe to spend until (?!until\b)/)).toBeVisible()
+    await expect(page.getByText('Available now')).toBeVisible()
+    await expect(page.getByText('After tomorrow')).toBeVisible()
+    await expect(page.getByText(/Safe to spend|Committed first|Then income/i)).toHaveCount(0)
     await expect(page.locator('.app-sidebar')).toHaveCount(0)
     await expect(page.getByRole('navigation', { name: 'Mobile navigation' })).toBeVisible()
     await page.getByRole('button', { name: 'Planner' }).click()

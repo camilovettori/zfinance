@@ -19,11 +19,6 @@ export type MoneyEvent = {
   isNegative: boolean
 }
 
-export type HeadlineParts = {
-  template: string
-  values: Record<string, number | string>
-}
-
 export type GoalSummary = {
   id: string
   name: string
@@ -38,11 +33,9 @@ export type MobileDashboardModel = {
   todayIso: string
   todayLabel: string
   availableNowCents: number
+  afterTomorrowCents: number
   totalOwedCents: number
   netWorthCents: number
-  safeToSpendCents: number
-  safeToSpendUntilIso: string
-  safeToSpendUntilLabel: string
   runwayDays: number
   runwayIsInfinite: boolean
   horizon: MoneyEvent[]
@@ -57,15 +50,9 @@ export type MobileDashboardModel = {
   lowPointDateIso: string | null
   debt: DebtSummary
   goals: GoalSummary[]
-  headline: HeadlineParts
-  tone: 'good' | 'tight' | 'warning'
   currentWeek: PlanningWeek
-}
-
-type LegacyMobileDashboardFields = {
   tomorrowIso: string
   tomorrowLabel: string
-  afterTomorrowCents: number
   tomorrowItems: SimpleItem[]
   tomorrowIncomingCents: number
   tomorrowDueCents: number
@@ -179,26 +166,14 @@ export function buildMobileDashboardModel(state: AppState, referenceDate = new D
     items: nextIncomeItems,
     totalCents: sum(nextIncomeItems.map((item) => item.amountCents)),
   } : null
-  const safeToSpendUntilIso = nextIncomeDate ?? toIsoDate(addDays(referenceDate, 7))
-  const safeToSpendUntilDate = fromIsoDate(safeToSpendUntilIso)
-  const daysUntilIncome = differenceInCalendarDays(safeToSpendUntilDate, localToday)
-  const untilWeekday = new Intl.DateTimeFormat(state.settings.locale, { weekday: 'long' }).format(safeToSpendUntilDate)
-  const safeToSpendUntilLabel = daysUntilIncome === 0
-    ? 'until today'
-    : daysUntilIncome < 7
-      ? `until ${untilWeekday}`
-      : `until next ${untilWeekday}`
-
-  const billsUntilPayday = sum(upcomingItems
-    .filter((item) => item.kind === 'bill' && item.date <= safeToSpendUntilIso)
-    .map((item) => item.amountCents))
-  const plannedMonthlySavings = sum(state.goals.filter((goal) => !goal.archived).map((goal) => goal.monthlyContributionCents))
-  const horizonDays = daysUntilIncome + 1
-  const savingsAllocationCents = Math.round(plannedMonthlySavings * (horizonDays / 30))
-  const safeToSpendCents = availableNowCents - billsUntilPayday - savingsAllocationCents
-
-  const horizon = buildTimeline(state, todayIso, safeToSpendUntilIso, availableNowCents, referenceDate, 14)
+  const horizon = buildTimeline(state, todayIso, toIsoDate(addDays(localToday, 6)), availableNowCents, referenceDate, 7)
   const lowPoint = horizon.find((event) => event.isLowPoint) ?? null
+  const tomorrowIso = toIsoDate(addDays(localToday, 1))
+  const tomorrowEvent = horizon.find((event) => event.date === tomorrowIso)
+  const tomorrowItems = tomorrowEvent?.items ?? []
+  const tomorrowIncomingCents = tomorrowEvent?.incomeCents ?? 0
+  const tomorrowDueCents = tomorrowEvent?.billsCents ?? 0
+  const afterTomorrowCents = availableNowCents + tomorrowIncomingCents - tomorrowDueCents
 
   const runway = buildTimeline(
     state,
@@ -227,55 +202,14 @@ export function buildMobileDashboardModel(state: AppState, referenceDate = new D
       : null,
   }))
 
-  let tone: MobileDashboardModel['tone'] = 'good'
-  let headline: HeadlineParts
-  if ((lowPoint?.balanceAfterCents ?? 0) < 0) {
-    tone = 'warning'
-    headline = {
-      template: 'Short by {amount} on {day} — {billTotal} of bills before your next payday.',
-      values: {
-        amount: Math.abs(lowPoint!.balanceAfterCents),
-        day: lowPoint!.dayLabel,
-        billTotal: sum(horizon.map((event) => event.billsCents)),
-      },
-    }
-  } else if (safeToSpendCents < availableNowCents * 0.10) {
-    tone = 'tight'
-    headline = {
-      template: "{amount} to spend {until}. It's tight but it holds.",
-      values: { amount: safeToSpendCents, until: safeToSpendUntilLabel },
-    }
-  } else if (!debt.isDebtFree && debt.payoffDateIso !== null) {
-    headline = {
-      template: '{amount} to spend {until}. Debt-free by {payoffDate} at this pace.',
-      values: { amount: safeToSpendCents, until: safeToSpendUntilLabel, payoffDate: debt.payoffDateIso },
-    }
-  } else {
-    const advancedGoal = goals.find((goal) => goal.percent >= 75)
-    headline = advancedGoal ? {
-      template: '{amount} to spend {until}. {goalName} is {goalPercent}% there.',
-      values: {
-        amount: safeToSpendCents,
-        until: safeToSpendUntilLabel,
-        goalName: advancedGoal.name,
-        goalPercent: String(advancedGoal.percent),
-      },
-    } : {
-      template: '{amount} to spend {until}.',
-      values: { amount: safeToSpendCents, until: safeToSpendUntilLabel },
-    }
-  }
-
   const currentWeek = buildCurrentPlannerWeek(state, localToday, referenceDate)
   const model: MobileDashboardModel = {
     todayIso,
     todayLabel: new Intl.DateTimeFormat(state.settings.locale, { weekday: 'long', day: 'numeric', month: 'long' }).format(localToday),
     availableNowCents,
+    afterTomorrowCents,
     totalOwedCents: debt.totalOwedCents,
     netWorthCents: availableNowCents - debt.totalOwedCents,
-    safeToSpendCents,
-    safeToSpendUntilIso,
-    safeToSpendUntilLabel,
     runwayDays,
     runwayIsInfinite,
     horizon,
@@ -284,21 +218,12 @@ export function buildMobileDashboardModel(state: AppState, referenceDate = new D
     lowPointDateIso: lowPoint?.date ?? null,
     debt,
     goals,
-    headline,
-    tone,
     currentWeek,
-  }
-
-  const tomorrowIso = toIsoDate(addDays(localToday, 1))
-  const tomorrowEvent = horizon.find((event) => event.date === tomorrowIso)
-  const tomorrowItems = tomorrowEvent?.items ?? []
-  const legacy: LegacyMobileDashboardFields = {
     tomorrowIso,
     tomorrowLabel: new Intl.DateTimeFormat(state.settings.locale, { weekday: 'long', day: 'numeric', month: 'short' }).format(fromIsoDate(tomorrowIso)),
-    afterTomorrowCents: tomorrowEvent?.balanceAfterCents ?? availableNowCents,
     tomorrowItems,
-    tomorrowIncomingCents: tomorrowEvent?.incomeCents ?? 0,
-    tomorrowDueCents: tomorrowEvent?.billsCents ?? 0,
+    tomorrowIncomingCents,
+    tomorrowDueCents,
     insight: tomorrowItems.length === 0
       ? 'nothing-tomorrow'
       : nextIncome?.date === tomorrowIso && (tomorrowEvent?.billsCents ?? 0) > 0 && nextIncome.totalCents >= (tomorrowEvent?.billsCents ?? 0)
@@ -307,5 +232,5 @@ export function buildMobileDashboardModel(state: AppState, referenceDate = new D
           ? 'week-left'
           : 'week-short',
   }
-  return Object.assign(model, legacy)
+  return model
 }
