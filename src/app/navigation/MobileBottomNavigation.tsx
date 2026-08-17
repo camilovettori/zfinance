@@ -1,15 +1,26 @@
 import { useEffect, useState } from 'react'
-import { ChartNoAxesCombined, FileChartColumn, Menu, CalendarRange } from 'lucide-react'
+import { CalendarRange, ChartNoAxesCombined, Menu, Plus, ReceiptText } from 'lucide-react'
 import { SECTION_ITEMS, type SectionKey } from './sections'
 
 const primary: Array<{ key: SectionKey; label: string; icon: typeof CalendarRange }> = [
   { key: 'dashboard', label: 'Home', icon: ChartNoAxesCombined },
   { key: 'planner', label: 'Planner', icon: CalendarRange },
-  { key: 'reports', label: 'Reports', icon: FileChartColumn },
 ]
-const moreKeys: SectionKey[] = ['savings', 'settings']
+const secondary: Array<{ key: SectionKey; label: string; icon: typeof CalendarRange }> = [
+  { key: 'bills', label: 'Bills', icon: ReceiptText },
+]
+// Reports moves in here: it is a review task, not a daily one. Savings and
+// Settings stay where they were.
+const moreKeys: SectionKey[] = ['week', 'calendar', 'recurring', 'reports', 'savings', 'settings']
 
-export function MobileBottomNavigation({ activeSection, onNavigate }: { activeSection: SectionKey; onNavigate: (section: SectionKey) => void }) {
+type Props = {
+  activeSection: SectionKey
+  onNavigate: (section: SectionKey) => void
+  /** Opens the amount-first add sheet. Absent = centre button is hidden. */
+  onAdd?: () => void
+}
+
+export function MobileBottomNavigation({ activeSection, onNavigate, onAdd }: Props) {
   const [moreOpen, setMoreOpen] = useState(false)
   useEffect(() => {
     if (!moreOpen) return
@@ -22,17 +33,34 @@ export function MobileBottomNavigation({ activeSection, onNavigate }: { activeSe
     onNavigate(section)
     setMoreOpen(false)
   }
+  const tab = (item: { key: SectionKey; label: string; icon: typeof CalendarRange }) => {
+    const Icon = item.icon
+    const active = activeSection === item.key
+    return <button
+      key={item.key}
+      data-active={active}
+      aria-current={active ? 'page' : undefined}
+      onClick={() => navigate(item.key)}
+      aria-label={item.label}
+    >
+      <Icon size={20} aria-hidden="true" /><span>{item.label}</span>
+    </button>
+  }
 
   return <>
-    <nav className="mobile-nav print-hide" aria-label="Mobile navigation">
-      {primary.map((item) => {
-        const Icon = item.icon
-        const active = activeSection === item.key
-        return <button key={item.key} data-active={active} aria-current={active ? 'page' : undefined} onClick={() => navigate(item.key)} aria-label={item.label}>
-          <Icon size={20} aria-hidden="true" /><span>{item.label}</span>
-        </button>
-      })}
-      <button data-active={moreKeys.includes(activeSection)} aria-expanded={moreOpen} aria-haspopup="dialog" onClick={() => setMoreOpen((open) => !open)} aria-label="More sections">
+    <nav className="mobile-nav print-hide" aria-label="Mobile navigation" data-with-add={Boolean(onAdd)}>
+      {primary.map(tab)}
+      {onAdd ? <button className="mobile-nav-add" onClick={() => { setMoreOpen(false); onAdd() }} aria-label="Add income or bill">
+        <Plus size={24} strokeWidth={2.6} aria-hidden="true" />
+      </button> : null}
+      {secondary.map(tab)}
+      <button
+        data-active={moreKeys.includes(activeSection)}
+        aria-expanded={moreOpen}
+        aria-haspopup="dialog"
+        onClick={() => setMoreOpen((open) => !open)}
+        aria-label="More sections"
+      >
         <Menu size={20} aria-hidden="true" /><span>More</span>
       </button>
     </nav>

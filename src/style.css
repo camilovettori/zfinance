@@ -1213,3 +1213,5 @@ textarea {
   .sync-panel-heading, .sync-members > div, .sync-conflicts > div { align-items: stretch; flex-direction: column; }
   .sync-inline-actions > * { width: 100%; }
 }
+
+@import './styles/mobile-redesign.css';

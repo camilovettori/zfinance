@@ -94,6 +94,7 @@ import {
   type CloudSyncSnapshot,
 } from '@/sync'
 import { MonthlyPlannerSummary, MonthlyPlannerView, PlannerSavingsSummary } from './MonthlyPlanner'
+import { MobileAddSheet } from './dashboard/MobileAddSheet'
 import { MobileDashboard } from './dashboard/MobileDashboard'
 import { DesktopNavigation } from './navigation/DesktopNavigation'
 import { MobileBottomNavigation } from './navigation/MobileBottomNavigation'
@@ -594,6 +595,7 @@ function App() {
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null)
   const [toast, setToast] = useState<ToastState | null>(null)
   const [showQuickAdd, setShowQuickAdd] = useState(false)
+  const [mobileAddOpen, setMobileAddOpen] = useState(false)
   const [compactDashboard, setCompactDashboard] = useState(false)
   const [mobileLayout, setMobileLayout] = useState(() => window.matchMedia('(max-width: 1023px)').matches)
   const [reportPeriod, setReportPeriod] = useState<ReportPeriod>('week')
@@ -3278,6 +3280,8 @@ function App() {
               onEditItem={openEditTransaction}
               onAddIncome={() => openQuickTransaction('income', 'Income')}
               onAddBill={() => openQuickTransaction('bill', 'Expense')}
+              onCompleteItem={completeItemFromPlanner}
+              onOpenDay={() => setActiveSection('planner')}
             />
           : dashboardView : null}
         {activeSection === 'planner' ? plannerSection : null}
@@ -3291,7 +3295,25 @@ function App() {
       </main>
       </div>
 
-      {mobileLayout ? <MobileBottomNavigation activeSection={activeSection} onNavigate={setActiveSection} /> : null}
+      {mobileLayout ? <MobileBottomNavigation
+        activeSection={activeSection}
+        onNavigate={setActiveSection}
+        onAdd={() => setMobileAddOpen(true)}
+      /> : null}
+
+      {mobileLayout && mobileAddOpen ? <MobileAddSheet
+        locale={state.settings.locale}
+        currency={state.settings.currency}
+        date={todayIso()}
+        onClose={() => setMobileAddOpen(false)}
+        onSubmit={(kind, amountCents) => {
+          setMobileAddOpen(false)
+          openQuickTransaction(kind, kind === 'income' ? 'Income' : 'Expense')
+          setTransactionModal((current) =>
+            current ? { ...current, draft: { ...current.draft, amount: (amountCents / 100).toFixed(2) } } : current,
+          )
+        }}
+      /> : null}
 
       {showReportFilters ? (
         <ModalShell title="Report filters" subtitle="Choose the planning period and report title." onClose={() => setShowReportFilters(false)}>

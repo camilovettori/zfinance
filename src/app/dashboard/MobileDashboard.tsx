@@ -1,4 +1,5 @@
-import { ArrowDownLeft, ArrowUpRight, Plus } from 'lucide-react'
+import { useState } from 'react'
+import { Check, Plus } from 'lucide-react'
 import { formatSimpleCurrency, type SimpleItem } from '@/domain/home'
 import type { AppState } from '@/domain/model'
 import { fromIsoDate } from '@/lib/date'
@@ -10,81 +11,141 @@ type Props = {
   onEditItem(item: SimpleItem): void
   onAddIncome(): void
   onAddBill(): void
+  /** Marks an item paid/received in place. Falls back to onEditItem when absent. */
+  onCompleteItem?(item: SimpleItem): void | Promise<void>
+  /** Opens the planner on a given day. Absent = day rail is not tappable. */
+  onOpenDay?(dateIso: string): void
 }
 
-export function MobileDashboard({ state, referenceDate = new Date(), onEditItem, onAddIncome, onAddBill }: Props) {
+const WEEKDAY_LETTER = (dateIso: string, locale: string) =>
+  new Intl.DateTimeFormat(locale, { weekday: 'narrow' }).format(fromIsoDate(dateIso))
+
+export function MobileDashboard({
+  state,
+  referenceDate = new Date(),
+  onEditItem,
+  onAddIncome,
+  onAddBill,
+  onCompleteItem,
+  onOpenDay,
+}: Props) {
   const model = buildMobileDashboardModel(state, referenceDate)
   const hidden = state.settings.hideSensitiveValues || state.settings.privacyMode
-  const money = (amountCents: number) => formatSimpleCurrency(amountCents, state.settings.locale, state.settings.currency, hidden)
-  const signedMoney = (amountCents: number, kind: 'income' | 'bill') => hidden
-    ? '••••'
-    : `${kind === 'income' ? '+' : '−'}${money(Math.abs(amountCents))}`
-  const visibleTomorrowItems = model.tomorrowItems.slice(0, 4)
-  const remainingTomorrowItems = model.tomorrowItems.length - visibleTomorrowItems.length
-  const nextIncomeDays = model.nextIncome?.daysAway
-  const insight = model.insight === 'nothing-tomorrow'
-    ? 'Nothing due tomorrow'
-    : model.insight === 'tomorrow-covered'
-      ? 'Tomorrow’s income covers tomorrow’s bills'
-      : model.insight === 'week-left'
-        ? `${money(model.currentWeek.closingBalanceCents)} left after this week`
-        : `${money(Math.abs(model.currentWeek.closingBalanceCents))} short after this week`
+  const money = (amountCents: number) =>
+    formatSimpleCurrency(amountCents, state.settings.locale, state.settings.currency, hidden)
+  const signedMoney = (amountCents: number, kind: 'income' | 'bill') =>
+    hidden ? '••••' : `${kind === 'income' ? '+' : '−'}${money(Math.abs(amountCents))}`
+
+  // Optimistic ticks: the domain write is async, the tap must feel instant.
+  const [pending, setPending] = useState<string[]>([])
+  const complete = async (item: SimpleItem) => {
+    if (!onCompleteItem) return onEditItem(item)
+    setPending((current) => [...current, item.id])
+    try {
+      await onCompleteItem(item)
+    } finally {
+      setPending((current) => current.filter((id) => id !== item.id))
+    }
+  }
+
+  const horizon = model.horizon.slice(0, 7)
+  const today = model.horizon[0]
+  const todayItems = today?.items ?? []
+  const todayOutstanding = todayItems.filter((item) => item.status !== 'completed')
+
+  // Everything already owed before the next income lands: the reason
+  // "safe to spend" is smaller than the raw balance.
+  const committedCents = Math.max(0, model.availableNowCents - model.safeToSpendCents)
+  const freePercent = model.availableNowCents > 0
+    ? Math.max(4, Math.min(96, Math.round((model.safeToSpendCents / model.availableNowCents) * 100)))
+    : 4
+  const maxDayFlow = Math.max(1, ...horizon.map((event) => Math.max(event.incomeCents, event.billsCents)))
+  const closingCents = horizon.length ? horizon[horizon.length - 1].balanceAfterCents : model.availableNowCents
 
   return <section className="mobile-dashboard" aria-label="Mobile household dashboard">
     <header className="mobile-dashboard-header">
       <div><p>HomeCoin</p><h1>{state.household.name}</h1></div>
-      <time dateTime={model.todayIso}>{new Intl.DateTimeFormat(state.settings.locale, { weekday: 'short', day: 'numeric', month: 'short' }).format(fromIsoDate(model.todayIso))}</time>
+      <time dateTime={model.todayIso}>
+        {new Intl.DateTimeFormat(state.settings.locale, { weekday: 'short', day: 'numeric', month: 'short' }).format(fromIsoDate(model.todayIso))}
+      </time>
     </header>
 
-    <article className="mobile-now-card">
-      <p>Available now</p>
-      <strong className={model.availableNowCents < 0 ? 'money-negative' : ''}>{money(model.availableNowCents)}</strong>
-      <div>
-        <span>{model.tomorrowItems.length ? 'After tomorrow' : 'Tomorrow'}</span>
-        <b className={model.afterTomorrowCents < 0 ? 'money-negative' : ''}>
-          {model.tomorrowItems.length ? `${money(model.afterTomorrowCents)} remaining` : 'No payments due tomorrow'}
-        </b>
+    <article className="mobile-safe-card" data-tone={model.tone}>
+      <p>Safe to spend until {model.safeToSpendUntilLabel}</p>
+      <strong className={model.safeToSpendCents < 0 ? 'money-negative' : ''}>{money(model.safeToSpendCents)}</strong>
+      <div className="mobile-safe-bar" role="presentation">
+        <span style={{ width: `${freePercent}%` }} />
+        <span />
       </div>
-    </article>
-
-    <article className="mobile-tomorrow-card">
-      <header><div><p>Tomorrow</p><h2>{model.tomorrowLabel}</h2></div><span>{model.tomorrowItems.length}</span></header>
-      {visibleTomorrowItems.length ? <div className="mobile-tomorrow-list">
-        {visibleTomorrowItems.map((item) => {
-          const category = state.categories.find((candidate) => candidate.id === item.categoryId)
-          return <button key={item.id} onClick={() => onEditItem(item)}>
-            <span className={`mobile-money-icon ${item.kind}`} aria-hidden="true">{item.kind === 'income' ? <ArrowDownLeft size={17} /> : <ArrowUpRight size={17} />}</span>
-            <span><strong>{item.title}</strong>{category ? <small>{category.name}</small> : null}</span>
-            <b className={item.kind === 'income' ? 'money-positive' : 'money-negative'}>{signedMoney(item.amountCents, item.kind)}</b>
-          </button>
-        })}
-        {remainingTomorrowItems > 0 ? <p className="mobile-more-items">+ {remainingTomorrowItems} more tomorrow</p> : null}
-      </div> : <p className="mobile-tomorrow-empty">Nothing due tomorrow</p>}
       <footer>
-        <span>Incoming<b className="money-positive">{signedMoney(model.tomorrowIncomingCents, 'income')}</b></span>
-        <span>Due<b className="money-negative">{signedMoney(model.tomorrowDueCents, 'bill')}</b></span>
-        <span>After day<b className={model.afterTomorrowCents < 0 ? 'money-negative' : ''}>{money(model.afterTomorrowCents)}</b></span>
+        <span><small>Committed first</small><b className="money-negative">{money(committedCents)}</b></span>
+        <span>
+          <small>{model.nextIncome ? 'Then income' : 'No income scheduled'}</small>
+          <b className="money-positive">{model.nextIncome ? signedMoney(model.nextIncome.totalCents, 'income') : '—'}</b>
+        </span>
       </footer>
     </article>
 
-    <article className="mobile-next-income-card">
-      <div><p>Next income</p>{model.nextIncome ? <>
-        <h2>{model.nextIncome.items.length === 1 ? model.nextIncome.items[0].title : model.nextIncome.label}</h2>
-        <span>{model.nextIncome.items.length === 1 ? model.nextIncome.label : `${model.nextIncome.items.length} incomes`}</span>
-      </> : <><h2>No upcoming income</h2><span>No income scheduled in the next year</span></>}</div>
-      {model.nextIncome ? <div><small>{nextIncomeDays === 0 ? 'today' : nextIncomeDays === 1 ? 'tomorrow' : `in ${nextIncomeDays} days`}</small><strong className="money-positive">{signedMoney(model.nextIncome.totalCents, 'income')}</strong></div> : null}
+    <article className="mobile-today-card">
+      <header>
+        <div><p>Due today</p><h2>{today?.dayLabel ?? 'Today'}</h2></div>
+        <span>{todayOutstanding.length} left of {todayItems.length}</span>
+      </header>
+      {todayItems.length ? <ul className="mobile-today-list">
+        {todayItems.map((item) => {
+          const category = state.categories.find((candidate) => candidate.id === item.categoryId)
+          const done = item.status === 'completed' || pending.includes(item.id)
+          return <li key={item.id} data-kind={item.kind} data-done={done}>
+            <button
+              className="mobile-item-status"
+              onClick={() => void complete(item)}
+              disabled={done}
+              aria-pressed={done}
+              aria-label={`Mark ${item.title} ${item.kind === 'income' ? 'received' : 'paid'}`}
+            >
+              <span aria-hidden="true">{done ? <Check size={14} strokeWidth={3} /> : null}</span>
+            </button>
+            <button className="mobile-item-main" onClick={() => onEditItem(item)}>
+              <strong>{item.title}</strong>
+              <small>{category ? `${category.name} · ` : ''}{done ? (item.kind === 'income' ? 'received' : 'paid') : 'planned'}</small>
+            </button>
+            <b className={item.kind === 'income' ? 'money-positive' : ''}>{signedMoney(item.amountCents, item.kind)}</b>
+          </li>
+        })}
+      </ul> : <p className="mobile-today-empty">Nothing due today</p>}
     </article>
 
-    <article className="mobile-week-card">
-      <header><div><p>Current week</p><h2>{model.currentWeek.label}</h2></div></header>
-      <div className="mobile-week-opening"><span>Opening balance</span><strong className={model.currentWeek.openingBalanceCents < 0 ? 'money-negative' : ''}>{money(model.currentWeek.openingBalanceCents)}</strong></div>
-      <div className="mobile-week-flows">
-        <span>Income<strong className="money-positive">{signedMoney(model.currentWeek.incomeCents, 'income')}</strong></span>
-        <span>Bills<strong className="money-negative">{signedMoney(model.currentWeek.expenseCents, 'bill')}</strong></span>
+    <article className="mobile-horizon-card">
+      <header><div><p>Next seven days</p><h2>{model.currentWeek.label}</h2></div></header>
+      <div className="mobile-horizon-spark">
+        {horizon.map((event) => {
+          const netCents = event.netCents
+          const height = Math.max(6, Math.round((Math.abs(netCents) / maxDayFlow) * 44))
+          const Tag = onOpenDay ? 'button' : 'div'
+          return <Tag
+            key={event.date}
+            className="mobile-horizon-day"
+            data-date={event.date}
+            data-today={event.isToday}
+            data-negative={event.isNegative}
+            {...(onOpenDay ? { onClick: () => onOpenDay(event.date), 'aria-label': `${event.dayLabel}, balance ${money(event.balanceAfterCents)}` } : {})}
+          >
+            <span className="mobile-horizon-bar" style={{ height: `${height}px` }} data-direction={netCents >= 0 ? 'in' : 'out'} />
+            <small>{WEEKDAY_LETTER(event.date, state.settings.locale)}</small>
+          </Tag>
+        })}
       </div>
-      <div className="mobile-week-savings"><span>Savings</span><strong>{money(model.currentWeek.plannedSavingsCents)}</strong></div>
-      <footer><span>Expected closing</span><strong className={model.currentWeek.closingBalanceCents < 0 ? 'money-negative' : ''}>{money(model.currentWeek.closingBalanceCents)}</strong></footer>
-      <p className="mobile-financial-signal">{insight}</p>
+      <footer>
+        <span>Balance in seven days</span>
+        <strong className={closingCents < 0 ? 'money-negative' : 'money-positive'}>{money(closingCents)}</strong>
+      </footer>
+      {model.lowPointDateIso && model.lowPointCents < 0
+        ? <p className="mobile-financial-signal" data-tone="warning">
+            Lowest point {money(model.lowPointCents)} on {new Intl.DateTimeFormat(state.settings.locale, { weekday: 'long', day: 'numeric', month: 'short' }).format(fromIsoDate(model.lowPointDateIso))}
+          </p>
+        : <p className="mobile-financial-signal">
+            {model.runwayIsInfinite ? 'Income covers everything planned' : `${model.runwayDays} days of runway at this rate`}
+          </p>}
     </article>
 
     <div className="mobile-dashboard-actions" aria-label="Quick actions">
