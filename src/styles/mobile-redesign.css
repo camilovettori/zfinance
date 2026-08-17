@@ -1,153 +1,244 @@
-/* Mobile-only redesign layer. Loaded after style.css so equal-specificity
-   rules here win; compound selectors are used wherever the legacy mobile
-   rules in style.css would otherwise out-rank a single class. Desktop is
-   untouched — every selector below only ever matches markup rendered by
-   the mobile components. */
+/* Mobile-only redesign layer. Loaded via `@import` at the very end of
+   style.css (confirmed the Vite/Tailwind v4 CSS pipeline inlines it in place
+   rather than hoisting it, so equal-specificity rules here win the cascade).
+   Selectors that would otherwise lose to an existing same- or
+   higher-specificity rule in style.css are written as compound selectors
+   (e.g. `.mobile-week-day > .mobile-rail-items` instead of
+   `.mobile-rail-items`) to guarantee the override regardless of source
+   order. Desktop is untouched: every selector here only ever matches markup
+   rendered by the mobile components. */
 
-/* ---------- Safe-to-spend hero card ---------- */
-.mobile-safe-card[data-tone='good'] { --tone: var(--accent); --tone-strong: var(--accent-strong); }
-.mobile-safe-card[data-tone='tight'] { --tone: var(--warning); --tone-strong: var(--warning); }
-.mobile-safe-card[data-tone='warning'] { --tone: var(--danger); --tone-strong: var(--danger); }
-
-@media (max-width: 1023px) {
-  .mobile-safe-card { padding: 22px 20px 19px; }
-  .mobile-safe-card > p { margin: 0; color: var(--tone-strong); font-size: 0.72rem; font-weight: 820; letter-spacing: 0.11em; text-transform: uppercase; }
-  .mobile-safe-card > strong { display: block; margin-top: 8px; color: var(--text); font-size: clamp(2.4rem, 12vw, 3.6rem); font-weight: 820; line-height: 1; letter-spacing: -0.06em; font-variant-numeric: tabular-nums; }
-
-  .mobile-safe-bar { position: relative; height: 10px; margin-top: 16px; border-radius: 999px; background: var(--surface-muted); overflow: hidden; }
-  .mobile-safe-bar span:first-child { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: linear-gradient(90deg, var(--tone), var(--tone-strong)); transition: width 0.35s ease; }
-  .mobile-safe-bar span:last-child { position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 1px 2px rgba(45, 58, 58, 0.12); pointer-events: none; }
-
-  .mobile-safe-card > footer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
-  .mobile-safe-card > footer span { display: grid; gap: 4px; border-radius: 14px; background: var(--surface-muted); padding: 11px 12px; }
-  .mobile-safe-card > footer small { color: var(--muted); font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
-  .mobile-safe-card > footer b { font-size: 0.86rem; font-variant-numeric: tabular-nums; }
-
-  /* ---------- Due today ---------- */
-  .mobile-today-card { padding: 18px 17px 15px; }
-  .mobile-today-card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-  .mobile-today-card > header p,
-  .mobile-today-card > header h2 { margin: 0; }
-  .mobile-today-card > header p { color: var(--accent-strong); font-size: 0.7rem; font-weight: 820; letter-spacing: 0.13em; text-transform: uppercase; }
-  .mobile-today-card > header h2 { margin-top: 4px; color: var(--text); font-size: 1.12rem; letter-spacing: -0.025em; }
-  .mobile-today-card > header > span { flex: 0 0 auto; align-self: center; color: var(--muted); font-size: 0.72rem; font-weight: 700; }
-
-  .mobile-today-list { display: grid; margin-top: 12px; padding: 0; list-style: none; }
-  .mobile-today-list li { display: grid; grid-template-columns: var(--touch-target) minmax(0, 1fr) auto; align-items: center; gap: 10px; border-bottom: 1px solid color-mix(in srgb, var(--border) 75%, transparent); padding: 6px 0; }
-  .mobile-today-list li:last-child { border-bottom: 0; }
-
-  .mobile-item-status { display: grid; width: var(--touch-target); height: var(--touch-target); place-items: center; border: 2px solid var(--border); border-radius: 999px; background: transparent; color: #fff; }
-  .mobile-today-list li[data-kind='income'] .mobile-item-status { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
-  .mobile-today-list li[data-done='true'] .mobile-item-status { border-color: transparent; background: var(--accent); }
-  .mobile-today-list li[data-kind='bill'][data-done='true'] .mobile-item-status { background: var(--warning); }
-  .mobile-item-status:disabled { cursor: default; }
-
-  .mobile-item-main { display: grid; min-width: 0; gap: 2px; border: 0; background: transparent; padding: 4px 0; color: var(--text); text-align: left; }
-  .mobile-item-main strong,
-  .mobile-item-main small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .mobile-item-main strong { font-size: 0.88rem; }
-  .mobile-item-main small { color: var(--muted); font-size: 0.68rem; text-transform: capitalize; }
-  .mobile-today-list li[data-done='true'] .mobile-item-main strong { color: var(--muted); text-decoration: line-through; }
-
-  .mobile-today-list > li > b { font-size: 0.86rem; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .mobile-today-list li[data-done='true'] > b { text-decoration: line-through; opacity: 0.6; }
-  .mobile-today-empty { margin: 11px 0 2px; border-radius: 14px; background: var(--surface-muted); padding: 17px; color: var(--muted); font-size: 0.78rem; text-align: center; }
-
-  /* ---------- Seven-day horizon ---------- */
-  .mobile-horizon-card { padding: 19px 18px 16px; }
-  .mobile-horizon-card > header p,
-  .mobile-horizon-card > header h2 { margin: 0; }
-  .mobile-horizon-card > header p { color: var(--accent-strong); font-size: 0.7rem; font-weight: 820; letter-spacing: 0.13em; text-transform: uppercase; }
-  .mobile-horizon-card > header h2 { margin-top: 4px; color: var(--text); font-size: 1.12rem; letter-spacing: -0.025em; }
-
-  .mobile-horizon-spark { display: flex; align-items: flex-end; justify-content: space-between; gap: 5px; min-height: 66px; margin-top: 16px; padding: 0 1px; border: 0; background: transparent; }
-  .mobile-horizon-day { display: flex; flex: 1; flex-direction: column; align-items: center; gap: 7px; min-width: 0; border: 0; background: transparent; padding: 2px 0; }
-  button.mobile-horizon-day { cursor: pointer; }
-  .mobile-horizon-bar { display: block; width: 100%; max-width: 20px; border-radius: 6px 6px 3px 3px; background: var(--surface-muted); }
-  .mobile-horizon-bar[data-direction='in'] { background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 65%, var(--surface-strong))); }
-  .mobile-horizon-bar[data-direction='out'] { background: linear-gradient(180deg, var(--warning), color-mix(in srgb, var(--warning) 65%, var(--surface-strong))); }
-  .mobile-horizon-day[data-negative='true'] .mobile-horizon-bar { box-shadow: 0 0 0 1px color-mix(in srgb, var(--danger) 55%, transparent); }
-  .mobile-horizon-day small { color: var(--muted); font-size: 0.62rem; font-weight: 750; text-transform: uppercase; }
-  .mobile-horizon-day[data-today='true'] small { color: var(--accent-strong); }
-
-  .mobile-horizon-card > footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 15px; border-top: 1px solid var(--border); padding-top: 13px; }
-  .mobile-horizon-card > footer span { color: var(--muted); font-size: 0.76rem; }
-  .mobile-horizon-card > footer strong { font-size: 1rem; font-variant-numeric: tabular-nums; }
-  .mobile-financial-signal[data-tone='warning'] { color: var(--danger); font-weight: 750; }
-
-  /* ---------- Bottom nav add button ---------- */
-  .mobile-nav-add { display: grid; width: 52px; height: 52px; margin: -20px auto 0; place-items: center; border: 4px solid var(--surface-strong); border-radius: 999px; background: var(--accent); color: #fff; box-shadow: 0 10px 22px rgba(47, 125, 91, 0.38); }
-  .mobile-nav-add:active { transform: scale(0.96); }
+/* ---------- Card shell, independent of the 639px block ---------- */
+.mobile-dashboard { display: grid; width: min(100%, 680px); gap: 14px; margin: 0 auto; color: var(--text); }
+.mobile-dashboard > article {
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: var(--radius-xl);
+  background: var(--surface-strong);
+  box-shadow: 0 8px 24px rgba(67, 58, 43, 0.055);
 }
+.mobile-dashboard h1,
+.mobile-dashboard h2,
+.mobile-dashboard p,
+.mobile-dashboard ul,
+.mobile-dashboard strong { margin: 0; }
+.mobile-dashboard button { font: inherit; cursor: pointer; }
+.mobile-planner { display: grid; width: min(100%, 680px); gap: 12px; margin: 0 auto; color: var(--text); }
 
-/* ---------- Amount-first add sheet ---------- */
-.mobile-add-backdrop { position: fixed; inset: 0; z-index: 95; display: flex; align-items: flex-end; justify-content: center; background: rgba(45, 58, 58, 0.28); backdrop-filter: blur(8px); }
-.mobile-add-sheet { display: grid; gap: 16px; width: 100%; max-width: 480px; border: 1px solid var(--border); border-radius: var(--sheet-radius) var(--sheet-radius) 0 0; background: var(--bg-soft); padding: 12px 18px calc(20px + env(safe-area-inset-bottom)); box-shadow: 0 -18px 48px rgba(45, 58, 58, 0.2); }
-.mobile-sheet-grip { justify-self: center; width: 36px; height: 4px; border-radius: 999px; background: var(--border); }
+/* ---------- Bottom navigation: 4 tabs + centre Add ---------- */
+.mobile-nav[data-with-add='true'] { grid-template-columns: 1fr 1fr 64px 1fr 1fr; align-items: center; }
+.mobile-nav-add {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  justify-self: center;
+  border: 0;
+  border-radius: 20px;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--accent) 34%, transparent);
+}
+.mobile-nav-add:active { transform: scale(0.96); }
 
-.mobile-add-kind { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-muted); padding: 4px; }
-.mobile-add-kind button { min-height: var(--touch-target); border: 0; border-radius: 10px; background: transparent; color: var(--muted); font-size: 0.86rem; font-weight: 760; }
-.mobile-add-kind button[aria-selected='true'] { background: var(--surface-strong); box-shadow: var(--shadow-soft); color: var(--accent-strong); }
+/* ---------- Dashboard: one hero number ---------- */
+.mobile-safe-card { display: grid; gap: 14px; padding: 22px; }
+.mobile-safe-card > p { color: var(--muted); font-size: 0.8rem; font-weight: 650; }
+.mobile-safe-card > strong { font-size: 2.6rem; font-weight: 780; letter-spacing: -0.035em; line-height: 1; font-variant-numeric: tabular-nums; }
+.mobile-safe-bar { display: flex; height: 8px; overflow: hidden; border-radius: 999px; background: var(--surface-muted); }
+.mobile-safe-bar > span:first-child { background: var(--accent); }
+.mobile-safe-bar > span:last-child { flex: 1; background: color-mix(in srgb, var(--warning) 42%, var(--surface-muted)); }
+.mobile-safe-card > footer { display: flex; justify-content: space-between; gap: 12px; }
+.mobile-safe-card > footer span { display: grid; gap: 3px; }
+.mobile-safe-card > footer span:last-child { text-align: right; }
+.mobile-safe-card > footer small { color: var(--muted); font-size: 0.66rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+.mobile-safe-card > footer b { font-size: 0.95rem; font-weight: 750; font-variant-numeric: tabular-nums; }
+.mobile-safe-card[data-tone='warning'] > strong { color: var(--danger); }
 
-.mobile-add-amount { display: grid; justify-items: center; gap: 4px; padding: 6px 0 2px; text-align: center; }
-.mobile-add-amount small { color: var(--muted); font-size: 0.7rem; font-weight: 750; text-transform: uppercase; letter-spacing: 0.08em; }
-.mobile-add-amount strong { font-size: clamp(2.2rem, 11vw, 2.8rem); font-weight: 820; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
-.mobile-add-amount strong[data-kind='income'] { color: var(--accent-strong); }
-.mobile-add-amount strong[data-kind='bill'] { color: var(--warning); }
+/* ---------- Due today: status is a tap, not a dialog ---------- */
+.mobile-today-card { display: grid; gap: 12px; padding: 18px; }
+.mobile-today-card > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.mobile-today-card > header p { color: var(--muted); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.mobile-today-card > header h2 { font-size: 1rem; font-weight: 750; }
+.mobile-today-card > header > span { color: var(--muted); font-size: 0.74rem; font-weight: 700; }
+.mobile-today-list { display: grid; gap: 2px; list-style: none; margin: 0; padding: 0; }
+.mobile-today-list li { display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--border); padding: 7px 0; }
+.mobile-today-list li:first-child { border-top: 0; }
+.mobile-item-status {
+  display: grid;
+  place-items: center;
+  width: var(--touch-target, 44px);
+  height: var(--touch-target, 44px);
+  flex: none;
+  margin: -7px -8px -7px -10px;
+  border: 0;
+  background: none;
+}
+.mobile-item-status > span {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1.8px solid color-mix(in srgb, var(--border) 90%, var(--muted));
+  border-radius: 999px;
+  color: #fff;
+}
+.mobile-today-list li[data-kind='income'] .mobile-item-status > span { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: var(--accent-soft); }
+.mobile-today-list li[data-done='true'] .mobile-item-status > span { border-color: var(--accent); background: var(--accent); }
+.mobile-item-main { display: grid; flex: 1; gap: 2px; min-width: 0; border: 0; background: none; text-align: left; }
+.mobile-item-main strong { overflow: hidden; font-size: 0.88rem; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.mobile-item-main small { color: var(--muted); font-size: 0.7rem; font-weight: 600; }
+.mobile-today-list li > b { flex: none; font-size: 0.9rem; font-weight: 750; font-variant-numeric: tabular-nums; }
+.mobile-today-list li[data-done='true'] > b,
+.mobile-today-list li[data-done='true'] .mobile-item-main strong { color: var(--muted); text-decoration: line-through; }
+.mobile-today-empty { border-radius: var(--radius-md); background: var(--surface-muted); padding: 17px; color: var(--muted); text-align: center; font-size: 0.82rem; }
 
-.mobile-add-keypad { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.mobile-add-keypad button { display: grid; min-height: 54px; place-items: center; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-strong); color: var(--text); font-size: 1.15rem; font-weight: 700; }
-.mobile-add-keypad button:active { background: var(--surface-muted); }
+/* ---------- Seven-day horizon ---------- */
+.mobile-horizon-card { display: grid; gap: 14px; padding: 18px; }
+.mobile-horizon-card > header p { color: var(--muted); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.mobile-horizon-card > header h2 { font-size: 1rem; font-weight: 750; }
+.mobile-horizon-spark { display: flex; align-items: flex-end; gap: 6px; height: 74px; }
+.mobile-horizon-day { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; height: 100%; border: 0; background: none; padding: 0; }
+.mobile-horizon-bar { display: block; width: 100%; max-width: 26px; border-radius: 6px; background: var(--accent); }
+.mobile-horizon-bar[data-direction='out'] { background: var(--warning); }
+.mobile-horizon-day[data-negative='true'] .mobile-horizon-bar { background: var(--danger); }
+.mobile-horizon-day small { color: var(--muted); font-size: 0.68rem; font-weight: 750; }
+.mobile-horizon-day[data-today='true'] small { color: var(--accent-strong); }
+.mobile-horizon-card > footer { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--border); padding-top: 11px; }
+.mobile-horizon-card > footer span { color: var(--muted); font-size: 0.78rem; font-weight: 650; }
+.mobile-horizon-card > footer strong { font-size: 1.05rem; font-weight: 780; font-variant-numeric: tabular-nums; }
+.mobile-financial-signal[data-tone='warning'] { color: var(--danger); font-weight: 700; }
 
-.mobile-add-sheet > footer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.mobile-add-sheet > footer button { min-height: var(--touch-target); border: 1px solid var(--border); border-radius: 14px; background: var(--surface-strong); color: var(--text); font-weight: 750; }
-.mobile-add-primary { border-color: var(--accent) !important; background: var(--accent) !important; color: #fff !important; }
-.mobile-add-primary:disabled { border-color: var(--border) !important; background: var(--surface-muted) !important; color: var(--muted) !important; }
-.mobile-add-date { color: var(--muted); font-size: 0.72rem; text-align: center; }
-
-/* ---------- Planner: week rail ---------- */
-.mobile-week-heading { display: grid; min-width: 0; gap: 2px; text-align: center; }
-.mobile-week-heading strong { color: var(--text); font-size: 1.02rem; letter-spacing: -0.02em; }
-.mobile-week-heading small { display: block; overflow: hidden; color: var(--muted); font-size: 0.7rem; text-overflow: ellipsis; white-space: nowrap; }
-.mobile-week-today { display: block; width: 100%; min-height: var(--touch-target); border: 1px solid var(--border); border-radius: 12px; background: var(--surface-muted); color: var(--accent-strong); font-size: 0.8rem; font-weight: 750; }
-
-.mobile-week-rail { display: grid; gap: 14px; margin: 0; padding: 4px 0 0; list-style: none; }
-.mobile-week-rail li { position: relative; display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 10px; }
-.mobile-week-rail li[data-last='false']::after { position: absolute; top: 30px; bottom: -14px; left: 14px; width: 2px; background: var(--border); content: ''; }
-.mobile-rail-node { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-strong); color: var(--muted); font-size: 0.74rem; font-weight: 760; }
+/* ---------- Planner: the week as one rail ---------- */
+.mobile-week-heading { display: grid; gap: 2px; text-align: center; }
+.mobile-week-heading strong { font-size: 0.92rem; font-weight: 750; }
+.mobile-week-heading small { color: var(--muted); font-size: 0.7rem; font-variant-numeric: tabular-nums; }
+.mobile-week-today { min-height: var(--touch-target, 44px); border: 1px solid var(--border); border-radius: 12px; background: var(--surface-strong); color: var(--accent-strong); font-size: 0.8rem; font-weight: 750; }
+.mobile-week-rail { display: grid; gap: 0; list-style: none; margin: 0; padding: 0; }
+.mobile-week-rail > li { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 12px; }
+.mobile-week-rail > li:not([data-last='true']) .mobile-rail-node::after {
+  position: absolute;
+  top: 34px;
+  left: 50%;
+  width: 2px;
+  height: calc(100% + 12px);
+  background: var(--border);
+  content: '';
+  transform: translateX(-50%);
+}
+.mobile-rail-node {
+  position: relative;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-strong);
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 750;
+}
 .mobile-rail-node[data-today='true'] { border-color: var(--accent); background: var(--accent); color: #fff; }
-
-.mobile-week-day { display: grid; gap: 8px; min-height: 0; border: 1px solid var(--border); border-radius: 16px; background: var(--surface-strong); padding: 12px 13px; text-align: left; }
-.mobile-week-day[data-negative='true'] { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); background: color-mix(in srgb, var(--danger) 6%, var(--surface-strong)); }
-.mobile-week-day > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.mobile-week-day > header span { font-weight: 780; font-size: 0.84rem; text-transform: capitalize; }
-.mobile-week-day > header b { font-size: 0.92rem; font-variant-numeric: tabular-nums; }
+.mobile-week-rail .mobile-week-day { display: grid; gap: 7px; min-height: 0; margin-bottom: 12px; }
+.mobile-week-day[data-negative='true'] { border-color: color-mix(in srgb, var(--danger) 34%, var(--border)); background: color-mix(in srgb, var(--danger) 7%, var(--surface-strong)); }
+.mobile-week-day > header { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.mobile-week-day > header span { font-size: 0.85rem; font-weight: 750; }
+.mobile-week-day > header b { flex: none; font-size: 0.82rem; font-weight: 750; font-variant-numeric: tabular-nums; }
+/* Compound selectors below: style.css still carries `.mobile-week-day > div`
+   and `.mobile-week-day > div span` (0,1,1 / 0,1,2) from the old three-column
+   layout. `.mobile-rail-items` alone would lose that specificity fight and
+   silently keep the old 3-col grid / non-flex row, so it is prefixed here. */
 .mobile-week-day > .mobile-rail-items { display: grid; grid-template-columns: none; gap: 5px; }
-.mobile-week-day > .mobile-rail-items > span { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 0.74rem; }
-.mobile-week-day > .mobile-rail-items > span i { width: 5px; height: 5px; flex: 0 0 auto; border-radius: 999px; background: var(--border); }
-.mobile-week-day > .mobile-rail-items > span[data-kind='income'] i { background: var(--accent); }
-.mobile-week-day > .mobile-rail-items > span[data-kind='bill'] i { background: var(--warning); }
-.mobile-week-day > .mobile-rail-items > span small { min-width: 0; overflow: hidden; color: var(--text); text-overflow: ellipsis; white-space: nowrap; }
-.mobile-week-day > .mobile-rail-items > span b { flex: 0 0 auto; margin-left: auto; color: var(--text); font-variant-numeric: tabular-nums; }
-.mobile-rail-more { color: var(--muted); font-size: 0.7rem; }
-.mobile-rail-empty { color: var(--muted); font-size: 0.76rem; }
-.mobile-rail-warning { display: block; color: var(--danger); font-size: 0.72rem; font-weight: 750; }
+.mobile-week-day > .mobile-rail-items > span { display: flex; align-items: center; gap: 8px; }
+.mobile-rail-items i { width: 8px; height: 8px; flex: none; border-radius: 999px; background: var(--warning); }
+.mobile-rail-items > span[data-kind='income'] i { background: var(--accent); }
+.mobile-rail-items > span[data-status='completed'] i { background: var(--border); }
+.mobile-rail-items small { overflow: hidden; flex: 1; min-width: 0; color: var(--text); font-size: 0.78rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.mobile-rail-items > span > b { flex: none; font-size: 0.78rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.mobile-rail-more,
+.mobile-rail-empty { color: var(--muted); font-size: 0.74rem; font-weight: 600; }
+.mobile-week-day > .mobile-rail-empty { font-size: 0.74rem; }
+.mobile-rail-warning { color: var(--danger); font-size: 0.72rem; font-weight: 750; }
 
-/* ---------- Planner: day strip + day detail ---------- */
-.mobile-day-strip { display: flex; gap: 6px; overflow-x: auto; padding: 2px 1px; }
-.mobile-day-strip button { display: grid; flex: 1 0 40px; place-items: center; gap: 3px; min-height: 52px; border: 1px solid var(--border); border-radius: 13px; background: var(--surface-strong); color: var(--text); padding: 6px 4px; }
-.mobile-day-strip button[aria-selected='true'] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }
-.mobile-day-strip button small { color: inherit; font-size: 0.62rem; text-transform: uppercase; opacity: 0.75; }
-.mobile-day-strip button strong { font-size: 0.92rem; }
+/* ---------- Planner day: week strip ---------- */
+.mobile-day-strip { display: flex; gap: 6px; }
+.mobile-day-strip button {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  min-height: 52px;
+  place-content: center;
+  justify-items: center;
+  gap: 3px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface-strong);
+  color: var(--text);
+}
+.mobile-day-strip button[aria-selected='true'] { border-color: var(--accent); background: var(--accent); color: #fff; }
+.mobile-day-strip small { font-size: 0.66rem; font-weight: 650; opacity: 0.75; }
+.mobile-day-strip strong { font-size: 0.88rem; font-weight: 780; }
+.mobile-day-running { display: grid; gap: 2px; justify-items: end; }
+.mobile-day-running small { color: var(--muted); font-size: 0.68rem; font-weight: 650; }
+.mobile-day-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
-.mobile-day-running { display: grid; justify-items: end; gap: 2px; text-align: right; }
-.mobile-day-running small { color: var(--muted); font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.05em; }
-.mobile-day-running strong { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+/* ---------- Month overview: a real calendar grid ---------- */
+.mobile-month-overview { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.mobile-month-overview button {
+  display: grid;
+  aspect-ratio: 1;
+  min-width: 0;
+  min-height: 0;
+  place-content: center;
+  justify-items: center;
+  gap: 5px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: var(--surface-muted);
+  padding: 0;
+}
+.mobile-month-overview button[data-today='true'] { border-color: var(--accent); }
+.mobile-month-overview button[data-negative='true'] { background: color-mix(in srgb, var(--danger) 9%, var(--surface-strong)); }
+.mobile-month-overview strong { font-size: 0.8rem; font-weight: 750; font-variant-numeric: tabular-nums; }
+.mobile-month-overview button[data-negative='true'] strong { color: var(--danger); }
+.mobile-month-overview i { width: 16px; height: 4px; border-radius: 999px; background: color-mix(in srgb, var(--border) 80%, var(--muted)); }
+.mobile-month-overview i[data-flow='income'] { background: var(--accent); }
+.mobile-month-overview button[data-negative='true'] i { background: var(--danger); }
 
-/* ---------- Planner: month overview ---------- */
-.mobile-month-overview button { gap: 4px; min-height: 54px; }
-.mobile-month-overview button[data-today='true'] { box-shadow: inset 0 0 0 2px var(--accent); }
-.mobile-month-overview button strong { font-size: 0.82rem; font-variant-numeric: tabular-nums; }
-.mobile-month-overview button i { width: 6px; height: 6px; border-radius: 999px; background: var(--border); }
-.mobile-month-overview button i[data-flow='income'] { background: var(--accent); }
-.mobile-month-overview button i[data-flow='bills'] { background: var(--warning); }
+/* ---------- Add sheet: amount first ---------- */
+.mobile-add-backdrop { position: fixed; inset: 0; z-index: 90; display: flex; flex-direction: column; justify-content: flex-end; background: rgba(45, 58, 58, 0.42); }
+.mobile-add-sheet {
+  display: grid;
+  gap: 15px;
+  border-radius: 24px 24px 0 0;
+  background: var(--surface-strong);
+  padding: 16px 16px calc(20px + env(safe-area-inset-bottom));
+  box-shadow: 0 -12px 34px rgba(67, 58, 43, 0.18);
+}
+.mobile-sheet-grip { width: 42px; height: 4px; justify-self: center; border-radius: 999px; background: var(--border); }
+.mobile-add-kind { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-muted); padding: 4px; }
+.mobile-add-kind button { min-height: 38px; border: 0; border-radius: 10px; background: none; color: var(--muted); font-size: 0.84rem; font-weight: 750; }
+.mobile-add-kind button[aria-selected='true'] { background: var(--surface-strong); color: var(--text); box-shadow: var(--shadow-soft); }
+.mobile-add-amount { display: grid; justify-items: center; gap: 4px; }
+.mobile-add-amount small { color: var(--muted); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.mobile-add-amount strong { font-size: 2.4rem; font-weight: 780; letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+.mobile-add-amount strong[data-kind='income'] { color: var(--accent-strong); }
+.mobile-add-keypad { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.mobile-add-keypad button {
+  display: grid;
+  min-height: 52px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+  color: var(--text);
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+.mobile-add-keypad button:active { background: var(--surface-strong); }
+.mobile-add-sheet > footer { display: grid; grid-template-columns: 1fr 2fr; gap: 8px; }
+.mobile-add-sheet > footer button { min-height: 52px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface-strong); color: var(--text); font-size: 0.92rem; font-weight: 750; }
+.mobile-add-primary { border-color: var(--accent) !important; background: var(--accent) !important; color: #fff !important; }
+.mobile-add-primary:disabled { opacity: 0.45; }
+.mobile-add-date { justify-self: center; color: var(--muted); font-size: 0.72rem; font-weight: 600; }
