@@ -29,6 +29,11 @@ export interface LocalMigrationSummary {
 
 const entityKey = (entityType: SyncEntityType, entityId: string) => `${entityType}:${entityId}`
 const normalizedText = (value: unknown) => typeof value === 'string' ? value.trim().toLocaleLowerCase() : ''
+const timestampFromPayload = (payload: unknown, fallback: string) => {
+  if (!payload || typeof payload !== 'object') return fallback
+  const updatedAt = (payload as { updatedAt?: unknown }).updatedAt
+  return typeof updatedAt === 'string' && !Number.isNaN(Date.parse(updatedAt)) ? updatedAt : fallback
+}
 const duplicateFingerprint = (entityType: SyncEntityType, payload: unknown) => {
   const value = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {}
   if (entityType === 'transactions') return `${entityType}:${normalizedText(value.title)}:${value.amountCents ?? ''}:${value.transactionDate ?? ''}`
@@ -39,7 +44,9 @@ const duplicateFingerprint = (entityType: SyncEntityType, payload: unknown) => {
 
 export class SyncCoordinator {
   readonly queue: IndexedDbSyncQueue
-  private running = false
+  private queuePromise: Promise<void> | null = null
+  private syncPromise: Promise<void> | null = null
+  private syncRequested = false
   private unsubscribeRealtime: (() => void) | null = null
   private retryTimer: ReturnType<typeof setTimeout> | null = null
   private readonly db: HomeCoinWebDatabase
@@ -55,7 +62,7 @@ export class SyncCoordinator {
     state: StateAccess,
     householdId: string,
     deviceId: string,
-    maximumAttempts = 5,
+    maximumAttempts = Number.MAX_SAFE_INTEGER,
   ) {
     this.db = db
     this.provider = provider
@@ -184,48 +191,53 @@ export class SyncCoordinator {
     }
   }
 
-  async processQueue() {
-    if (this.running) return
+  processQueue() {
+    if (this.queuePromise) return this.queuePromise
+    const promise = this.processQueueNow()
+    this.queuePromise = promise.finally(() => {
+      this.queuePromise = null
+    })
+    return this.queuePromise
+  }
+
+  private async processQueueNow() {
     if (!navigator.onLine) {
       const pending = (await this.queue.list('pending', this.householdId)).length
       publishSyncStatus({ status: 'offline', message: 'Offline', pending })
       return
     }
-    this.running = true
     try {
-      const operations = await this.queue.ready(new Date(), this.householdId)
-      if (!operations.length) {
-        const conflicts = await this.db.syncConflicts.where('householdId').equals(this.householdId).filter((item) => item.status === 'unresolved').count()
-        publishSyncStatus({ status: conflicts ? 'conflict' : 'synced', message: conflicts ? 'Conflict' : 'Synced', pending: conflicts })
-        return
-      }
-      publishSyncStatus({ status: 'syncing', message: 'Syncing', pending: operations.length })
-      for (const operation of operations) await this.db.syncQueue.update(operation.id, { status: 'syncing' })
-      const result = await this.provider.push(operations)
-      for (const accepted of result.accepted) {
-        const remote = accepted.remote
-        const entityType = remoteEntityType(remote)
-        await this.db.transaction('rw', this.db.syncQueue, this.db.entitySyncMetadata, async () => {
-          await this.db.syncQueue.delete(accepted.operationId)
-          const later = await this.db.syncQueue.where('entityId').equals(remote.id).filter((operation) => operation.householdId === this.householdId).toArray()
-          for (const operation of later) {
-            if (normalizeSyncEntityType(operation.entityType) === entityType && operation.status === 'pending') {
-              await this.db.syncQueue.update(operation.id, { baseVersion: remote.version })
+      let operations = await this.queue.ready(new Date(), this.householdId)
+      while (operations.length) {
+        publishSyncStatus({ status: 'syncing', message: 'Syncing', pending: operations.length })
+        for (const operation of operations) await this.db.syncQueue.update(operation.id, { status: 'syncing' })
+        const result = await this.provider.push(operations)
+        for (const accepted of result.accepted) {
+          const remote = accepted.remote
+          const entityType = remoteEntityType(remote)
+          await this.db.transaction('rw', this.db.syncQueue, this.db.entitySyncMetadata, async () => {
+            await this.db.syncQueue.delete(accepted.operationId)
+            const later = await this.db.syncQueue.where('entityId').equals(remote.id).filter((operation) => operation.householdId === this.householdId).toArray()
+            for (const operation of later) {
+              if (normalizeSyncEntityType(operation.entityType) === entityType && operation.status === 'pending') {
+                await this.db.syncQueue.update(operation.id, { baseVersion: remote.version })
+              }
             }
-          }
-          await this.db.entitySyncMetadata.put({
-            key: entityKey(entityType, remote.id), householdId: remote.householdId, entityType, entityId: remote.id,
-            version: remote.version, status: 'synced', remoteUpdatedAt: remote.updatedAt,
-            confirmedDeviceId: remote.deviceId, updatedAt: new Date().toISOString(),
+            await this.db.entitySyncMetadata.put({
+              key: entityKey(entityType, remote.id), householdId: remote.householdId, entityType, entityId: remote.id,
+              version: remote.version, status: 'synced', remoteUpdatedAt: remote.updatedAt,
+              confirmedDeviceId: remote.deviceId, updatedAt: new Date().toISOString(),
+            })
           })
-        })
+        }
+        for (const conflict of result.conflicts) {
+          const operation = operations.find((item) => item.id === conflict.operationId)
+          if (!operation) continue
+          await this.recordConflict(operation, conflict.remote)
+        }
+        for (const failed of result.failed) await this.queue.retry(failed.operationId, failed.error, this.maximumAttempts)
+        operations = await this.queue.ready(new Date(), this.householdId)
       }
-      for (const conflict of result.conflicts) {
-        const operation = operations.find((item) => item.id === conflict.operationId)
-        if (!operation) continue
-        await this.recordConflict(operation, conflict.remote)
-      }
-      for (const failed of result.failed) await this.queue.retry(failed.operationId, failed.error, this.maximumAttempts)
       const failedCount = (await this.queue.list('failed', this.householdId)).length
       const conflictCount = await this.db.syncConflicts.where('householdId').equals(this.householdId).filter((item) => item.status === 'unresolved').count()
       const pending = (await this.queue.list('pending', this.householdId)).length
@@ -234,7 +246,6 @@ export class SyncCoordinator {
         message: conflictCount ? 'Conflict' : failedCount ? 'Failed' : pending ? 'Changes waiting' : 'Synced', pending: pending + failedCount + conflictCount,
       })
     } finally {
-      this.running = false
       const pending = await this.queue.list('pending', this.householdId)
       const nextAttemptAt = pending.map((item) => item.nextAttemptAt).filter((value): value is string => Boolean(value)).sort()[0]
       if (nextAttemptAt) {
@@ -245,12 +256,110 @@ export class SyncCoordinator {
     }
   }
 
+  syncNow() {
+    if (this.syncPromise) {
+      this.syncRequested = true
+      return this.syncPromise
+    }
+    const promise = (async () => {
+      do {
+        this.syncRequested = false
+        await this.syncNowInternal()
+      } while (this.syncRequested)
+    })()
+    this.syncPromise = promise.finally(() => {
+      this.syncPromise = null
+    })
+    return this.syncPromise
+  }
+
+  private async syncNowInternal() {
+    if (!(await this.isReady())) return
+    try {
+      await this.requeueFailedOperations()
+      await this.processQueue()
+      await this.pull()
+      const resolved = await this.resolveConflictsLastWriteWins()
+      if (resolved > 0) {
+        await this.processQueue()
+        await this.pull()
+        console.info(`Resolved ${resolved} conflicts, forced sync push.`)
+      }
+      await this.startRealtime()
+      const conflicts = await this.db.syncConflicts.where('householdId').equals(this.householdId).filter((item) => item.status === 'unresolved').count()
+      const failed = (await this.queue.list('failed', this.householdId)).length
+      const pending = (await this.queue.list('pending', this.householdId)).length
+      publishSyncStatus({
+        status: conflicts ? 'conflict' : failed ? 'failed' : pending ? 'changes-waiting' : 'synced',
+        message: conflicts ? 'Conflict' : failed ? 'Failed' : pending ? 'Changes waiting' : 'Synced',
+        pending: conflicts + failed + pending,
+      })
+    } catch (error) {
+      publishSyncStatus({ status: 'error', message: 'Sync error', pending: 0 })
+      throw error
+    }
+  }
+
+  async resolveConflictsLastWriteWins() {
+    const conflicts = await this.db.syncConflicts.where('householdId').equals(this.householdId)
+      .filter((item) => item.status === 'unresolved').toArray()
+    let resolved = 0
+    for (const conflict of conflicts) {
+      const operation = await this.db.syncQueue.get(conflict.operationId)
+      if (!operation) {
+        await this.db.syncConflicts.update(conflict.id, { status: 'cancelled' })
+        resolved += 1
+        continue
+      }
+      const localUpdatedAt = operation.operation === 'delete'
+        ? operation.createdAt
+        : timestampFromPayload(conflict.localPayload, operation.createdAt)
+      const remoteFallback = conflict.remote?.clientUpdatedAt ?? conflict.remote?.updatedAt ?? ''
+      const remoteUpdatedAt = conflict.remote?.deletedAt
+        ?? timestampFromPayload(conflict.remote?.payload, remoteFallback)
+      const keepLocal = !conflict.remote || localUpdatedAt > remoteUpdatedAt
+
+      if (keepLocal) {
+        await this.db.transaction('rw', this.db.syncQueue, this.db.syncConflicts, async () => {
+          await this.db.syncQueue.delete(operation.id)
+          if (conflict.remote || operation.operation !== 'delete') {
+            await this.queue.enqueue({
+              id: crypto.randomUUID(), householdId: conflict.householdId, entityType: conflict.entityType,
+              entityId: conflict.entityId,
+              operation: conflict.remote ? (operation.operation === 'delete' ? 'delete' : 'update') : 'create',
+              payload: conflict.localPayload, baseVersion: conflict.remote?.version ?? 0,
+              createdAt: localUpdatedAt,
+            })
+          }
+          await this.db.syncConflicts.update(conflict.id, { status: 'keep-mine' })
+        })
+      } else {
+        const local = await this.state.load()
+        if (local && conflict.remote) {
+          const saved = await this.state.save(ensureCalculatedState(applyRemoteEntity(local, conflict.remote)))
+          await this.storeRemoteMetadata(conflict.remote)
+          this.state.changed?.(saved)
+        }
+        await this.db.transaction('rw', this.db.syncQueue, this.db.syncConflicts, async () => {
+          await this.db.syncQueue.delete(operation.id)
+          await this.db.syncConflicts.update(conflict.id, { status: 'use-remote' })
+        })
+      }
+      resolved += 1
+    }
+    return resolved
+  }
+
   async retryFailed() {
+    await this.requeueFailedOperations()
+    await this.processQueue()
+  }
+
+  private async requeueFailedOperations() {
     const failed = await this.queue.list('failed', this.householdId)
     for (const operation of failed) {
       await this.db.syncQueue.update(operation.id, { status: 'pending', attempts: 0, lastError: undefined, nextAttemptAt: undefined })
     }
-    await this.processQueue()
   }
 
   private async recordConflict(operation: SyncOperation, remote: RemoteEntity | null) {
@@ -315,7 +424,10 @@ export class SyncCoordinator {
     if (remote.deviceId === this.deviceId && metadata?.version === remote.version) return
     const pending = await this.queue.pendingForEntity(entityType, remote.id, this.householdId)
     if (pending.length) {
-      if (remote.version > pending[0].baseVersion) await this.recordConflict(pending[0], remote)
+      if (remote.version > pending[0].baseVersion) {
+        await this.recordConflict(pending[0], remote)
+        void this.syncNow()
+      }
       return
     }
     const local = await this.state.load()

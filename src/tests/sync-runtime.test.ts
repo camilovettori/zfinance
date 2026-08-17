@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createBlankState } from '@/domain/seed'
 import { loadState, saveState, setActiveHouseholdId } from '@/services/storage'
@@ -32,6 +33,7 @@ afterEach(() => {
 
 describe('active household runtime', () => {
   it('restores a valid active household and performs a read-only full pull outside Settings', async () => {
+    const interval = vi.spyOn(globalThis, 'setInterval')
     const local = createBlankState()
     local.household.name = 'Legacy local household'
     await saveState(local)
@@ -75,5 +77,9 @@ describe('active household runtime', () => {
     expect(received).toHaveBeenCalledWith(expect.objectContaining({ household: expect.objectContaining({ id: remoteHouseholdId }) }))
     expect((await loadState())?.accounts.map((account) => account.name)).toEqual(['Remote account'])
     expect(await activeSyncCoordinator()?.isReady()).toBe(true)
+    expect(interval).toHaveBeenCalledWith(expect.any(Function), 60_000)
+
+    window.dispatchEvent(new Event('focus'))
+    await waitFor(() => expect(from).toHaveBeenCalledTimes(14))
   })
 })

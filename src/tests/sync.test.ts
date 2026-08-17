@@ -56,4 +56,20 @@ describe('disabled sync preparation', () => {
     expect(result.failed).toEqual([{ operationId: expected.id, error: 'Sync is disabled' }])
     expect(await provider.pull()).toEqual({ changes: [] })
   })
+
+  it('caps exponential retry backoff at 30 seconds', async () => {
+    const expected = operation()
+    await queue.enqueue(expected)
+    const retryBase = new Date('2026-08-17T12:00:00.000Z')
+
+    for (let attempt = 0; attempt < 7; attempt += 1) {
+      await queue.retry(expected.id, 'offline', 100, retryBase)
+    }
+
+    expect(await db.syncQueue.get(expected.id)).toMatchObject({
+      attempts: 7,
+      status: 'pending',
+      nextAttemptAt: '2026-08-17T12:00:30.000Z',
+    })
+  })
 })

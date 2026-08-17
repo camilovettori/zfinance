@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ensureCalculatedState } from '@/domain/calculations'
 import type { AppState } from '@/domain/model'
 import { createDemoState } from '@/domain/seed'
@@ -220,6 +220,54 @@ describe('local-first queue and optimistic versions', () => {
 })
 
 describe('pull and Realtime reconciliation', () => {
+  it('automatically resolves existing conflicts with last-write-wins and forces a push', async () => {
+    const item = value.transactions[0]
+    const localPayload = { ...item, title: 'Latest local', updatedAt: '2026-08-06T12:00:10.000Z' }
+    const server = remote('transactions', { ...item, title: 'Older remote', updatedAt: '2026-08-06T12:00:05.000Z' }, 2)
+    provider.rows.set(`transactions:${item.id}`, server)
+    await coordinator.queue.enqueue({
+      id: crypto.randomUUID(), householdId: value.household.id, entityType: 'transactions', entityId: item.id,
+      operation: 'update', payload: localPayload, baseVersion: 1, createdAt: localPayload.updatedAt,
+    })
+    const log = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+
+    await coordinator.syncNow()
+
+    expect((provider.rows.get(`transactions:${item.id}`)?.payload as { title: string }).title).toBe('Latest local')
+    expect(await db.syncConflicts.where('status').equals('unresolved').count()).toBe(0)
+    expect(log).toHaveBeenCalledWith('Resolved 1 conflicts, forced sync push.')
+  })
+
+  it('automatically applies the remote version when it has the latest updatedAt', async () => {
+    const item = value.transactions[0]
+    const localPayload = { ...item, title: 'Older local', updatedAt: '2026-08-06T12:00:05.000Z' }
+    const server = remote('transactions', { ...item, title: 'Latest remote', updatedAt: '2026-08-06T12:00:10.000Z' }, 2)
+    provider.rows.set(`transactions:${item.id}`, server)
+    await coordinator.queue.enqueue({
+      id: crypto.randomUUID(), householdId: value.household.id, entityType: 'transactions', entityId: item.id,
+      operation: 'update', payload: localPayload, baseVersion: 1, createdAt: localPayload.updatedAt,
+    })
+
+    await coordinator.syncNow()
+
+    expect(value.transactions.find((entry) => entry.id === item.id)?.title).toBe('Latest remote')
+    expect(await coordinator.queue.list()).toEqual([])
+    expect(await db.syncConflicts.where('status').equals('unresolved').count()).toBe(0)
+  })
+
+  it('automatically revives a failed operation on the next full sync', async () => {
+    const item = value.transactions[0]
+    await coordinator.queue.enqueue({
+      id: crypto.randomUUID(), householdId: value.household.id, entityType: 'transactions', entityId: item.id,
+      operation: 'create', payload: item, baseVersion: 0, createdAt: item.updatedAt, status: 'failed', attempts: 3,
+    })
+
+    await coordinator.syncNow()
+
+    expect(await coordinator.queue.list()).toEqual([])
+    expect(provider.rows.get(`transactions:${item.id}`)?.payload).toEqual(item)
+  })
+
   it('opens a populated remote household on a new origin without uploading and notifies React', async () => {
     const remoteHouseholdId = crypto.randomUUID()
     const remoteHousehold = { ...value.household, id: remoteHouseholdId, name: 'Remote household' }

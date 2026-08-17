@@ -12,6 +12,7 @@ import {
   activeSyncCoordinator,
   deactivateSyncRuntime,
   getSupabaseClient,
+  syncNow,
   syncConfiguration,
   SupabaseHouseholdRepository,
   type HouseholdSummary,
@@ -265,7 +266,7 @@ export function SharingPanel({ state, onStateChanged, authOnly = false, inviteOn
           })}>Create backup and upload</button><button className="button-ghost" onClick={() => setMigration(null)}>Cancel</button></div>
         </div>}
       </div> : <div className="sync-ready"><strong>Sync active</strong><p>Push/pull is ready. Realtime supplements it after reconciliation.</p><button className="button-secondary" disabled={busy} onClick={() => void run(async () => {
-        const coordinator = activeSyncCoordinator(); await coordinator?.retryFailed(); await coordinator?.pull()
+        const coordinator = activeSyncCoordinator(); await coordinator?.retryFailed(); await syncNow()
         const unresolved = await webDatabase.syncConflicts.where('householdId').equals(active.household.id).filter((item) => item.status === 'unresolved').toArray()
         setConflicts(unresolved.map(({ id, entityType, entityId }) => ({ id, entityType, entityId })))
       })}>Sync now</button></div>}

@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
+import { MobileDashboard } from '@/app/dashboard/MobileDashboard'
 import { buildMobileDashboardModel } from '@/app/dashboard/mobile-dashboard-model'
 import { createBlankState } from '@/domain/seed'
 import type { AppState, RecurringRule, Transaction } from '@/domain/model'
@@ -63,6 +65,19 @@ function recurringRule(state: AppState, values: Pick<RecurringRule, 'id' | 'name
 }
 
 describe('mobile dashboard model', () => {
+  it('renders the safe-to-spend label without duplicating "until"', () => {
+    const state = dashboardState()
+    const category = categoryIds(state)
+    state.transactions = [transaction(state, {
+      id: 'income', title: 'Payday', amountCents: 50_000, type: 'income', categoryId: category.income, transactionDate: '2026-08-13',
+    })]
+
+    render(<MobileDashboard state={state} referenceDate={referenceDate} onEditItem={vi.fn()} onAddIncome={vi.fn()} onAddBill={vi.fn()} />)
+
+    expect(screen.getByText('Safe to spend until Thursday')).not.toBeNull()
+    expect(screen.queryByText(/until until/i)).toBeNull()
+  })
+
   it('renders tomorrow, after-tomorrow balance, and grouped next income', () => {
     const state = dashboardState()
     const category = categoryIds(state)

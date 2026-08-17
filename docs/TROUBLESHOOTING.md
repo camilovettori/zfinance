@@ -22,7 +22,7 @@ If variables are incomplete/invalid, HomeCoin deliberately creates no client and
 
 ## Changes are waiting / failed
 
-Offline changes are safe in Dexie. Reconnect and use **Sync now**. Retries use capped exponential backoff and stop after five attempts. Check browser network reachability and the Supabase project state. Do not clear IndexedDB: that would remove the queue. After correcting configuration, retry/reload; unresolved failed entries stay visible rather than retrying forever.
+Offline changes are safe in Dexie. HomeCoin retries automatically on reconnect, focus, and its 60-second sync cycle; **Sync now** remains available as a manual override. Retries use exponential backoff capped at 30 seconds. Check browser network reachability and the Supabase project state. Do not clear IndexedDB: that would remove the queue. Failed entries left by older builds are revived by the next full sync.
 
 ## Conflict appears
 

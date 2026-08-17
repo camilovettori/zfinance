@@ -71,7 +71,7 @@ export function MobileDashboard({
     </header>
 
     <article className="mobile-safe-card" data-tone={model.tone}>
-      <p>Safe to spend until {model.safeToSpendUntilLabel}</p>
+      <p>Safe to spend {model.safeToSpendUntilLabel}</p>
       <strong className={model.safeToSpendCents < 0 ? 'money-negative' : ''}>{money(model.safeToSpendCents)}</strong>
       <div className="mobile-safe-bar" role="presentation">
         <span style={{ width: `${freePercent}%` }} />

@@ -16,9 +16,101 @@ import { SupabaseSyncProvider } from './supabase-provider'
 
 let coordinator: SyncCoordinator | null = null
 let stateListener: ((state: AppState) => void) | null = null
-let onlineHandler: (() => void) | null = null
 let activeHouseholdId: string | null = null
 let activationQueue: Promise<void> = Promise.resolve()
+let activeSyncPromise: Promise<void> | null = null
+let activeSyncTarget: SyncCoordinator | null = null
+let periodicTimer: ReturnType<typeof setInterval> | null = null
+let retryTimer: ReturnType<typeof setTimeout> | null = null
+let retryAttempt = 0
+let onlineHandler: (() => void) | null = null
+let focusHandler: (() => void) | null = null
+let visibilityHandler: (() => void) | null = null
+let pendingRecovery: (() => void) | null = null
+
+const automaticSync = (reason: string) => {
+  void syncNow().catch((error) => console.error(`Automatic sync failed (${reason}); retry scheduled.`, error))
+}
+
+function scheduleRetry(action: () => void) {
+  pendingRecovery = action
+  if (!navigator.onLine) return
+  const delay = Math.min(30_000, 1_000 * 2 ** retryAttempt)
+  retryAttempt += 1
+  if (retryTimer) clearTimeout(retryTimer)
+  retryTimer = setTimeout(() => {
+    retryTimer = null
+    if (pendingRecovery === action) pendingRecovery = null
+    action()
+  }, delay)
+}
+
+function stopAutomaticSync() {
+  if (periodicTimer) clearInterval(periodicTimer)
+  if (retryTimer) clearTimeout(retryTimer)
+  if (onlineHandler) window.removeEventListener('online', onlineHandler)
+  if (focusHandler) window.removeEventListener('focus', focusHandler)
+  if (visibilityHandler) document.removeEventListener('visibilitychange', visibilityHandler)
+  periodicTimer = null
+  retryTimer = null
+  onlineHandler = null
+  focusHandler = null
+  visibilityHandler = null
+  pendingRecovery = null
+}
+
+function startAutomaticSync() {
+  stopAutomaticSync()
+  periodicTimer = setInterval(() => automaticSync('interval'), 60_000)
+  onlineHandler = () => {
+    if (pendingRecovery) {
+      const recover = pendingRecovery
+      pendingRecovery = null
+      recover()
+    } else {
+      automaticSync('online')
+    }
+  }
+  focusHandler = () => automaticSync('focus')
+  visibilityHandler = () => {
+    if (document.visibilityState === 'visible') automaticSync('visibility')
+  }
+  window.addEventListener('online', onlineHandler)
+  window.addEventListener('focus', focusHandler)
+  document.addEventListener('visibilitychange', visibilityHandler)
+}
+
+export function syncNow() {
+  const target = coordinator
+  if (!target) return Promise.resolve()
+  if (activeSyncPromise && activeSyncTarget === target) {
+    void target.syncNow()
+    return activeSyncPromise
+  }
+  const sync = target.syncNow()
+    .then(() => {
+      if (coordinator !== target) return
+      retryAttempt = 0
+      if (retryTimer) clearTimeout(retryTimer)
+      retryTimer = null
+      pendingRecovery = null
+    })
+    .catch((error) => {
+      if (coordinator === target && navigator.onLine) {
+        scheduleRetry(() => automaticSync('retry'))
+      }
+      throw error
+    })
+    .finally(() => {
+      if (activeSyncPromise === sync) {
+        activeSyncPromise = null
+        activeSyncTarget = null
+      }
+    })
+  activeSyncPromise = sync
+  activeSyncTarget = target
+  return sync
+}
 
 export const registerSyncedStateListener = (listener: ((state: AppState) => void) | null) => {
   stateListener = listener
@@ -29,9 +121,7 @@ type ActivateSyncRuntimeOptions = { openRemoteIfNeeded?: boolean }
 async function activateSyncRuntimeNow(client: SupabaseClient, householdId: string, options: ActivateSyncRuntimeOptions) {
   if (coordinator && activeHouseholdId === householdId) {
     if (await coordinator.isReady()) {
-      await coordinator.processQueue()
-      await coordinator.pull()
-      await coordinator.startRealtime()
+      await syncNow()
       return coordinator
     }
     if (!options.openRemoteIfNeeded) return coordinator
@@ -47,19 +137,13 @@ async function activateSyncRuntimeNow(client: SupabaseClient, householdId: strin
     householdId,
     deviceId,
   )
-  if (onlineHandler) window.removeEventListener('online', onlineHandler)
-  onlineHandler = () => {
-    void coordinator?.processQueue().then(() => coordinator?.pull())
-  }
-  window.addEventListener('online', onlineHandler)
+  startAutomaticSync()
   const [ready, snapshot] = await Promise.all([coordinator.isReady(), loadHouseholdState(householdId)])
   try {
     if (ready && snapshot) {
       const activated = await activateHouseholdState(householdId)
       if (activated) stateListener?.(activated)
-      await coordinator.processQueue()
-      await coordinator.pull()
-      await coordinator.startRealtime()
+      await syncNow()
     } else if (options.openRemoteIfNeeded) {
       const opened = await coordinator.openRemoteHousehold(await loadState() ?? undefined)
       if (opened) await coordinator.startRealtime()
@@ -69,8 +153,14 @@ async function activateSyncRuntimeNow(client: SupabaseClient, householdId: strin
     }
   } catch (error) {
     publishSyncStatus({ status: 'error', message: 'Sync error', pending: 0 })
+    scheduleRetry(() => {
+      void activateSyncRuntime(client, householdId, options)
+        .catch((caught) => console.error('Automatic sync activation retry failed; retry scheduled.', caught))
+    })
     throw error
   }
+  retryAttempt = 0
+  pendingRecovery = null
   return coordinator
 }
 
@@ -94,6 +184,12 @@ export async function restoreActiveSyncRuntime(client: SupabaseClient): Promise<
     return selected
   } catch (error) {
     publishSyncStatus({ status: 'error', message: 'Sync error', pending: 0 })
+    if (!coordinator) {
+      scheduleRetry(() => {
+        void restoreActiveSyncRuntime(client)
+          .catch((caught) => console.error('Automatic sync restore retry failed; retry scheduled.', caught))
+      })
+    }
     throw error
   }
 }
@@ -108,14 +204,17 @@ export function activeSyncHouseholdId() {
 
 export async function enqueueSyncChanges(previous: AppState, next: AppState) {
   const queued = await coordinator?.enqueueStateChanges(previous, next) ?? []
-  if (queued.length && navigator.onLine) void coordinator?.processQueue()
+  if (queued.length && navigator.onLine) automaticSync('local change')
 }
 
 export function deactivateSyncRuntime() {
+  stopAutomaticSync()
   coordinator?.stop()
   coordinator = null
+  activeSyncPromise = null
+  activeSyncTarget = null
   activeHouseholdId = null
-  if (onlineHandler) window.removeEventListener('online', onlineHandler)
-  onlineHandler = null
+  retryAttempt = 0
+  pendingRecovery = null
   publishSyncStatus({ status: 'local-only', message: 'Local only', pending: 0 })
 }

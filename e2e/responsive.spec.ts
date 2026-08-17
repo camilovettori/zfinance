@@ -1,12 +1,15 @@
 import { expect, test, type Page } from '@playwright/test'
 
+const dashboard = (page: Page) => page.getByRole('region', { name: 'Mobile household dashboard' })
+  .or(page.getByRole('heading', { name: /^Good / })).first()
+
 async function loadSampleHousehold(page: Page) {
   await page.goto('/')
   const setup = page.getByRole('heading', { name: "Let's set up your household plan" })
-  const dashboard = page.getByRole('heading', { name: /^Good / })
-  await setup.or(dashboard).first().waitFor({ state: 'visible' })
+  const loadedDashboard = dashboard(page)
+  await setup.or(loadedDashboard).first().waitFor({ state: 'visible' })
   if (await setup.isVisible()) await page.getByRole('button', { name: 'Load sample data' }).click()
-  await expect(dashboard).toBeVisible()
+  await expect(loadedDashboard).toBeVisible()
 }
 
 for (const viewport of [
@@ -17,6 +20,7 @@ for (const viewport of [
   test(`mobile shell and Planner fit ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport)
     await loadSampleHousehold(page)
+    await expect(page.getByText(/^Safe to spend until (?!until\b)/)).toBeVisible()
     await expect(page.locator('.app-sidebar')).toHaveCount(0)
     await expect(page.getByRole('navigation', { name: 'Mobile navigation' })).toBeVisible()
     await page.getByRole('button', { name: 'Planner' }).click()
@@ -38,7 +42,8 @@ test('desktop preserves the sidebar and seven-column Planner', async ({ page }) 
 test('mobile Reports uses filter and action sheets', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await loadSampleHousehold(page)
-  await page.getByRole('button', { name: 'Reports' }).click()
+  await page.getByRole('button', { name: 'More sections' }).click()
+  await page.getByRole('dialog', { name: 'More sections' }).getByRole('button', { name: 'Reports' }).click()
   await page.getByRole('button', { name: 'Filters' }).click()
   await expect(page.getByRole('dialog', { name: 'Report filters' })).toBeVisible()
   await page.getByRole('button', { name: 'Apply filters' }).click()
@@ -51,9 +56,9 @@ test('production app shell reloads offline with IndexedDB data', async ({ page, 
   await loadSampleHousehold(page)
   await page.evaluate(async () => { await navigator.serviceWorker.ready })
   await page.reload()
-  await expect(page.getByRole('heading', { name: /^Good / })).toBeVisible()
+  await expect(dashboard(page)).toBeVisible()
   await context.setOffline(true)
   await page.reload({ waitUntil: 'domcontentloaded' })
-  await expect(page.getByRole('heading', { name: /^Good / })).toBeVisible()
+  await expect(dashboard(page)).toBeVisible()
   await context.setOffline(false)
 })
