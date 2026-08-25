@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildMonthlyBillsReport } from '@/domain/monthly-bills-report'
+import { buildMonthlyBillsReport, formatMonthlyBillReportDate } from '@/domain/monthly-bills-report'
 import { createDemoState } from '@/domain/seed'
 import type { Transaction } from '@/domain/model'
 
@@ -76,5 +76,10 @@ describe('monthly bills report', () => {
     expect(report.items.map((item) => item.title)).not.toContain('Salary')
     expect(report.items.map((item) => item.title)).not.toContain('September rent')
     expect(report.items.map((item) => item.title)).not.toContain('Cancelled bill')
+    expect(report.items.map((item) => formatMonthlyBillReportDate(item.date))).toEqual([
+      '05/08/2026',
+      '12/08/2026',
+      '20/08/2026',
+    ])
   })
 })

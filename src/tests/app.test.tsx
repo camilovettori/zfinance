@@ -484,6 +484,11 @@ describe('HomeCoin app shell', () => {
       '2026-08-20',
       '2026-08-28',
     ])
+    expect(Array.from(table.querySelectorAll('tbody time')).map((time) => time.textContent)).toEqual([
+      '12/08/2026',
+      '20/08/2026',
+      '28/08/2026',
+    ])
     expect(within(table).getByText('€4,087.11')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Print' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Export PDF' })).toBeTruthy()

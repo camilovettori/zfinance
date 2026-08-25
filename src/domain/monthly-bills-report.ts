@@ -21,6 +21,11 @@ export interface MonthlyBillsReport {
   totalCents: number
 }
 
+export const formatMonthlyBillReportDate = (dateIso: string) => {
+  const [year, month, day] = dateIso.split('-')
+  return `${day}/${month}/${year}`
+}
+
 export const buildMonthlyBillsReport = (
   state: AppState,
   month: Date,

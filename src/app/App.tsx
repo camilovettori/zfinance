@@ -58,7 +58,7 @@ import {
 import { ensureCalculatedState } from '@/domain/calculations'
 import { buildRollingBalanceProjection, currentSpendableBalance } from '@/domain/cashflow'
 import { cleanupOneOffRecurringDuplicates, isSamePlannedEntry, isSameRecurringEntry } from '@/domain/deduplication'
-import { buildMonthlyBillsReport } from '@/domain/monthly-bills-report'
+import { buildMonthlyBillsReport, formatMonthlyBillReportDate } from '@/domain/monthly-bills-report'
 import {
   buildPlannerPeriodMetrics,
   buildPlannerCycleSummary,
@@ -2238,7 +2238,7 @@ function App() {
         pdf.line(margin, cursor + rowHeight, pageWidth - margin, cursor + rowHeight)
         pdf.setFontSize(8)
         pdf.setTextColor(45, 58, 58)
-        pdf.text(item.date, columns[0].x + 2, cursor + 6)
+        pdf.text(formatMonthlyBillReportDate(item.date), columns[0].x + 2, cursor + 6)
         pdf.text(billLines, columns[1].x + 2, cursor + 5)
         pdf.text(categoryLines, columns[2].x + 2, cursor + 5)
         pdf.text(simpleStatusLabel(item.status), columns[3].x + 2, cursor + 6)
@@ -3261,7 +3261,7 @@ function App() {
                   <tbody>
                     {monthlyBillsReport.items.map((item) => (
                       <tr key={item.id} data-source={item.sourceKind}>
-                        <td data-label="Due / paid date"><time dateTime={item.date}>{item.date}</time></td>
+                        <td data-label="Due / paid date"><time dateTime={item.date}>{formatMonthlyBillReportDate(item.date)}</time></td>
                         <td data-label="Bill"><strong>{item.title}</strong>{item.sourceKind === 'recurring' ? <small>Recurring</small> : null}</td>
                         <td data-label="Category">{item.categoryName}</td>
                         <td data-label="Status"><StatusBadge status={item.status} /></td>
