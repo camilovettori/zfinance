@@ -769,6 +769,16 @@ textarea {
 .report-header h2 { margin: 7px 0 0; color: #2d3a3a; font-size: 1.6rem; }
 .report-header > span { color: #6b7373; font-size: 0.78rem; }
 .report-footer { border-top: 1px solid var(--border); color: #6b7373; padding: 14px 18px; font-size: 0.72rem; text-align: center; }
+.monthly-bills-header p { margin: 7px 0 0; color: #6b7373; font-size: 0.82rem; }
+.monthly-bills-table { min-width: 720px; }
+.monthly-bills-table th:first-child { width: 148px; }
+.monthly-bills-table th:nth-child(4) { width: 120px; }
+.monthly-bills-table th:last-child { width: 132px; }
+.monthly-bills-table td:nth-child(2) small { display: block; margin-top: 3px; color: #6b7373; font-size: 0.68rem; font-weight: 650; }
+.monthly-bills-table tfoot th,
+.monthly-bills-table tfoot td { border-top: 2px solid #b9c9bd; background: #edf5ef; color: #2d3a3a; padding: 16px; }
+.monthly-bills-table tfoot th { text-align: right; }
+.monthly-bills-empty { min-height: 180px; display: grid; place-items: center; color: #6b7373; padding: 32px; text-align: center; }
 .report-period-navigator { display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--border); margin-top: 18px; padding-top: 18px; }
 .report-period-navigator > div { display: grid; flex: 1; gap: 2px; min-width: 180px; text-align: center; }
 .report-period-navigator small { color: var(--muted); font-size: 0.68rem; font-weight: 750; letter-spacing: 0.08em; text-transform: uppercase; }
@@ -1149,6 +1159,18 @@ textarea {
   .report-section > :not(.report-page),
   .planner-section > :not(.report-page) { display: none !important; }
   .report-page { border: 0 !important; }
+  .monthly-bills-report { page: monthly-bills; }
+  .monthly-bills-table-wrap { overflow: visible; }
+  .monthly-bills-table { width: 100%; min-width: 0; border-collapse: collapse; font-size: 8.5pt; }
+  .monthly-bills-table th,
+  .monthly-bills-table td { padding: 2.4mm 2mm; }
+  .monthly-bills-table th:first-child { width: 30mm; }
+  .monthly-bills-table th:nth-child(4) { width: 24mm; }
+  .monthly-bills-table th:last-child { width: 28mm; }
+  .monthly-bills-table .status-pill { border: 0; background: transparent; padding: 0; color: #2d3a3a; }
+  .monthly-bills-table tfoot { break-inside: avoid; }
+  .monthly-bills-table tfoot th,
+  .monthly-bills-table tfoot td { padding: 3.5mm 2mm; }
   .report-header { padding: 0 0 8mm !important; }
   .report-footer { position: fixed; right: 0; bottom: 0; left: 0; }
   .planning-week { overflow: visible; border-bottom: 0; padding: 4mm 0 7mm; break-after: page; }
@@ -1190,6 +1212,7 @@ textarea {
   .planning-week-totals,
   .monthly-grand-summary { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   @page { size: A4 landscape; margin: 10mm; }
+  @page monthly-bills { size: A4 portrait; margin: 12mm; }
   tr { break-inside: avoid; }
   thead { display: table-header-group; }
 }

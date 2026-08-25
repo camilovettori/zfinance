@@ -58,6 +58,7 @@ import {
 import { ensureCalculatedState } from '@/domain/calculations'
 import { buildRollingBalanceProjection, currentSpendableBalance } from '@/domain/cashflow'
 import { cleanupOneOffRecurringDuplicates, isSamePlannedEntry, isSameRecurringEntry } from '@/domain/deduplication'
+import { buildMonthlyBillsReport } from '@/domain/monthly-bills-report'
 import {
   buildPlannerPeriodMetrics,
   buildPlannerCycleSummary,
@@ -104,7 +105,7 @@ import { MobilePlannerView } from './planner/MobilePlannerView'
 const SharingPanel = lazy(() => import('@/components/sync/SharingPanel').then((module) => ({ default: module.SharingPanel })))
 
 type CalendarMode = 'month' | 'list'
-type ReportPeriod = 'week' | 'month' | 'year' | 'custom'
+type ReportPeriod = 'week' | 'month' | 'bills-month' | 'year' | 'custom'
 type SimpleKind = 'income' | 'bill'
 type RecurrenceChoice = 'once' | 'weekly' | 'fortnightly' | 'monthly' | 'yearly'
 type BillFilter = 'all' | 'pay' | 'receive' | 'overdue'
@@ -230,6 +231,7 @@ const WEEKDAY_OPTIONS = [
 const REPORT_PERIOD_OPTIONS: Array<{ value: ReportPeriod; label: string }> = [
   { value: 'week', label: 'Weekly planner' },
   { value: 'month', label: 'Monthly planner' },
+  { value: 'bills-month', label: 'Monthly bills list' },
   { value: 'year', label: 'Annual summary' },
   { value: 'custom', label: 'Custom range' },
 ]
@@ -1918,7 +1920,7 @@ function App() {
       return buildWeekSnapshot(state, reportReferenceDate)
     }
 
-    if (reportPeriod === 'month') {
+    if (reportPeriod === 'month' || reportPeriod === 'bills-month') {
       return summarizeRange(state, toIsoDate(startOfMonth(reportReferenceDate)), toIsoDate(endOfMonth(reportReferenceDate)), reportReferenceDate)
     }
 
@@ -1932,17 +1934,18 @@ function App() {
   const reportTrend = buildMonthlyTrend(state, 12, reportReferenceDate)
   const reportDistribution = buildCategoryDistribution(state, reportRange.start, reportRange.end, reportReferenceDate)
   const reportItems = buildVisibleItems(state, reportRange.start, reportRange.end, reportReferenceDate)
+  const monthlyBillsReport = buildMonthlyBillsReport(state, reportReferenceDate, new Date())
   const reportRangeDays = Math.max(1, Math.round((new Date(`${reportRange.end}T12:00:00`).getTime() - new Date(`${reportRange.start}T12:00:00`).getTime()) / 86_400_000) + 1)
   const reportPlannedSavings = reportPeriod === 'week'
     ? Math.round(plannedMonthlySavings * 12 / 52)
-    : reportPeriod === 'month'
+    : reportPeriod === 'month' || reportPeriod === 'bills-month'
       ? plannedMonthlySavings
       : reportPeriod === 'year'
         ? plannedMonthlySavings * 12
         : Math.round(plannedMonthlySavings * 12 * reportRangeDays / 365)
   const savingsPlanForGoal = (monthlyContributionCents: number) => reportPeriod === 'week'
     ? Math.round(monthlyContributionCents * 12 / 52)
-    : reportPeriod === 'month'
+    : reportPeriod === 'month' || reportPeriod === 'bills-month'
       ? monthlyContributionCents
       : reportPeriod === 'year'
         ? monthlyContributionCents * 12
@@ -2162,7 +2165,7 @@ function App() {
   const moveReportPeriod = (direction: -1 | 1) => {
     setReportReferenceDate((current) => {
       if (reportPeriod === 'week') return addDays(current, direction * 7)
-      if (reportPeriod === 'month') return addMonths(current, direction)
+      if (reportPeriod === 'month' || reportPeriod === 'bills-month') return addMonths(current, direction)
       if (reportPeriod === 'year') return addMonths(current, direction * 12)
       return current
     })
@@ -2182,6 +2185,82 @@ function App() {
   }
 
   const savePdfReport = () => {
+    if (reportPeriod === 'bills-month') {
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+      const pageWidth = pdf.internal.pageSize.getWidth()
+      const pageHeight = pdf.internal.pageSize.getHeight()
+      const margin = 14
+      const columns = [
+        { label: 'Due / paid date', x: margin, width: 30 },
+        { label: 'Bill', x: margin + 30, width: 62 },
+        { label: 'Category', x: margin + 92, width: 38 },
+        { label: 'Status', x: margin + 130, width: 25 },
+        { label: 'Amount', x: margin + 155, width: 27 },
+      ]
+
+      const drawHeader = (continued = false) => {
+        pdf.setTextColor(45, 58, 58)
+        pdf.setFontSize(continued ? 14 : 18)
+        pdf.text(reportTitle || 'Monthly bills report', margin, 18)
+        pdf.setFontSize(10)
+        pdf.setTextColor(107, 115, 115)
+        pdf.text(`${monthlyBillsReport.label}${continued ? ' — continued' : ''}`, margin, 25)
+        pdf.setFillColor(47, 125, 91)
+        pdf.rect(margin, 32, pageWidth - margin * 2, 9, 'F')
+        pdf.setTextColor(255, 255, 255)
+        pdf.setFontSize(7.5)
+        columns.forEach((column) => pdf.text(column.label, column.x + 2, 37.5))
+        pdf.setTextColor(45, 58, 58)
+        return 41
+      }
+
+      let cursor = drawHeader()
+      if (!monthlyBillsReport.items.length) {
+        pdf.setTextColor(107, 115, 115)
+        pdf.setFontSize(10)
+        pdf.text('No bills in this month.', margin + 2, cursor + 10)
+        cursor += 18
+      }
+
+      monthlyBillsReport.items.forEach((item, index) => {
+        const billLines = pdf.splitTextToSize(item.title, columns[1].width - 4).slice(0, 2)
+        const categoryLines = pdf.splitTextToSize(item.categoryName, columns[2].width - 4).slice(0, 2)
+        const rowHeight = Math.max(9, Math.max(billLines.length, categoryLines.length) * 4 + 4)
+        if (cursor + rowHeight > pageHeight - 24) {
+          pdf.addPage('a4', 'portrait')
+          cursor = drawHeader(true)
+        }
+        if (index % 2 === 0) {
+          pdf.setFillColor(248, 247, 243)
+          pdf.rect(margin, cursor, pageWidth - margin * 2, rowHeight, 'F')
+        }
+        pdf.setDrawColor(224, 226, 220)
+        pdf.line(margin, cursor + rowHeight, pageWidth - margin, cursor + rowHeight)
+        pdf.setFontSize(8)
+        pdf.setTextColor(45, 58, 58)
+        pdf.text(item.date, columns[0].x + 2, cursor + 6)
+        pdf.text(billLines, columns[1].x + 2, cursor + 5)
+        pdf.text(categoryLines, columns[2].x + 2, cursor + 5)
+        pdf.text(simpleStatusLabel(item.status), columns[3].x + 2, cursor + 6)
+        pdf.text(money(item.amountCents, state), pageWidth - margin - 2, cursor + 6, { align: 'right' })
+        cursor += rowHeight
+      })
+
+      if (cursor + 18 > pageHeight - 14) {
+        pdf.addPage('a4', 'portrait')
+        cursor = drawHeader(true)
+      }
+      pdf.setFillColor(236, 244, 238)
+      pdf.roundedRect(margin, cursor + 6, pageWidth - margin * 2, 13, 2, 2, 'F')
+      pdf.setTextColor(45, 58, 58)
+      pdf.setFontSize(10)
+      pdf.text('Total bills', margin + 4, cursor + 14)
+      pdf.setFontSize(12)
+      pdf.text(money(monthlyBillsReport.totalCents, state), pageWidth - margin - 4, cursor + 14, { align: 'right' })
+      pdf.save(`homecoin-bills-${monthlyBillsReport.start.slice(0, 7)}.pdf`)
+      return
+    }
+
     const isPlanner = planningWeeks.length > 0
     const pdf = new jsPDF({ orientation: isPlanner ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' })
     const pageWidth = pdf.internal.pageSize.getWidth()
@@ -2356,13 +2435,14 @@ function App() {
 
   const exportReportCsv = () => {
     const csv = Papa.unparse(
-      reportItems.map((item) => ({
+      (reportPeriod === 'bills-month' ? monthlyBillsReport.items : reportItems).map((item) => ({
         date: item.date,
         title: item.title,
-        type: item.kind,
+        type: 'kind' in item ? item.kind : 'bill',
         status: item.status,
         amount: (item.amountCents / 100).toFixed(2),
         source: item.sourceKind,
+        ...('categoryName' in item ? { category: item.categoryName } : {}),
       })),
     )
 
@@ -2370,7 +2450,9 @@ function App() {
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
     anchor.href = url
-    anchor.download = `homecoin-${reportPeriod}.csv`
+    anchor.download = reportPeriod === 'bills-month'
+      ? `homecoin-bills-${monthlyBillsReport.start.slice(0, 7)}.csv`
+      : `homecoin-${reportPeriod}.csv`
     anchor.click()
     URL.revokeObjectURL(url)
   }
@@ -3087,7 +3169,7 @@ function App() {
               Print
             </Button>
             <Button className="desktop-report-action" variant="secondary" onClick={savePdfReport}>
-              Save PDF
+              Export PDF
             </Button>
             <Button className="desktop-report-action" variant="secondary" onClick={exportReportCsv}>
               Export CSV
@@ -3113,10 +3195,22 @@ function App() {
         {reportPeriod !== 'custom' ? (
           <div className="report-period-navigator">
             <Button variant="secondary" onClick={() => moveReportPeriod(-1)}>← Previous</Button>
-            <div><small>Planning period</small><strong>{reportRangeOptions.label}</strong></div>
+            <div><small>{reportPeriod === 'bills-month' ? 'Bills month' : 'Planning period'}</small><strong>{reportPeriod === 'bills-month' ? monthlyBillsReport.label : reportRangeOptions.label}</strong></div>
             <Button variant="secondary" onClick={() => setReportReferenceDate(new Date())}>Today</Button>
             <Button variant="secondary" onClick={() => moveReportPeriod(1)}>Next →</Button>
           </div>
+        ) : null}
+
+        {reportPeriod === 'bills-month' ? (
+          <Field label="Bills month">
+            <input
+              className="input"
+              type="month"
+              aria-label="Bills month"
+              value={monthlyBillsReport.start.slice(0, 7)}
+              onChange={(event) => event.target.value && setReportReferenceDate(fromIsoDate(`${event.target.value}-01`))}
+            />
+          </Field>
         ) : null}
 
         {reportPeriod === 'custom' ? (
@@ -3135,25 +3229,56 @@ function App() {
         </Field>
       </Card>
 
-      <div className="report-metrics-grid">
+      {reportPeriod !== 'bills-month' ? <div className="report-metrics-grid">
         <MetricCard label="Opening balance" value={money(reportOpeningBalance, state)} />
         <MetricCard label="Total income" value={money(reportRangeOptions.incomeCents, state)} />
         <MetricCard label="Bills to pay" value={money(reportRangeOptions.expenseCents, state)} />
         <MetricCard label="Income minus bills" value={money(reportRangeOptions.remainingCents, state)} />
         <MetricCard label="Savings still planned" value={money(reportSavingsStillPlanned, state)} />
         <MetricCard label={reportPeriod === 'month' ? 'Planner cycle closing balance' : 'Period closing balance'} value={money(reportProjectedClosingBalance, state)} highlight />
-      </div>
+      </div> : null}
 
-      <Card className="p-5">
+      {reportPeriod !== 'bills-month' ? <Card className="p-5">
         <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">{reportRangeOptions.label}</p>
         <p className="mt-3 text-xl font-semibold text-slate-900">{reportRangeOptions.message}</p>
         <div className="report-saving-strip">
           <span><small>Savings accumulated</small><strong>{money(savedTotal, state)}</strong></span>
           <span><small>Actually saved in this period</small><strong>{money(reportActualSavings, state)}</strong></span>
         </div>
-      </Card>
+      </Card> : null}
 
-      <Card className="report-page report-planner overflow-hidden">
+      <Card className={`report-page overflow-hidden ${reportPeriod === 'bills-month' ? 'monthly-bills-report' : 'report-planner'}`}>
+        {reportPeriod === 'bills-month' ? (
+          <>
+            <div className="report-header monthly-bills-header p-5 md:p-6">
+              <div><p className="eyebrow">HomeCoin — monthly bills</p><h2>{reportTitle || 'Monthly bills report'}</h2><p>{monthlyBillsReport.label}</p></div>
+              <span>{monthlyBillsReport.items.length} {monthlyBillsReport.items.length === 1 ? 'bill' : 'bills'}</span>
+            </div>
+            {monthlyBillsReport.items.length ? (
+              <div className="table-wrap monthly-bills-table-wrap">
+                <table className="data-table monthly-bills-table">
+                  <thead><tr><th>Due / paid date</th><th>Bill</th><th>Category</th><th>Status</th><th className="money-cell">Amount</th></tr></thead>
+                  <tbody>
+                    {monthlyBillsReport.items.map((item) => (
+                      <tr key={item.id} data-source={item.sourceKind}>
+                        <td data-label="Due / paid date"><time dateTime={item.date}>{item.date}</time></td>
+                        <td data-label="Bill"><strong>{item.title}</strong>{item.sourceKind === 'recurring' ? <small>Recurring</small> : null}</td>
+                        <td data-label="Category">{item.categoryName}</td>
+                        <td data-label="Status"><StatusBadge status={item.status} /></td>
+                        <td data-label="Amount" className="money-cell">{money(item.amountCents, state)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot><tr><th colSpan={4}>Total bills</th><td className="money-cell"><strong>{money(monthlyBillsReport.totalCents, state)}</strong></td></tr></tfoot>
+                </table>
+              </div>
+            ) : (
+              <div className="monthly-bills-empty">No bills in {monthlyBillsReport.label}.</div>
+            )}
+            <div className="report-footer">HomeCoin • Monthly bills • Printed locally</div>
+          </>
+        ) : (
+          <>
         <div className="report-header p-5 md:p-6">
           <div><p className="eyebrow">HomeCoin — {reportRangeOptions.label}</p><h2>{reportTitle || 'Household planning report'}</h2></div>
           <span>Generated {new Intl.DateTimeFormat(state.settings.locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date())}</span>
@@ -3179,8 +3304,11 @@ function App() {
           <MonthlyPlannerSummary mode="calendar-report" monthName={reportMonthName} calendarMonthLabel={reportCalendarRangeLabel} plannerCycleLabel={reportPlannerRangeLabel} plannerCycleEndLabel={reportCycleEndLabel} incomeCents={reportRangeOptions.incomeCents} expenseCents={reportRangeOptions.expenseCents} remainingCents={reportPlannerMetrics?.calendarMonthResultCents ?? reportRangeOptions.remainingCents} openingBalanceCents={reportOpeningBalance} actualSavingsCents={reportActualSavings} closingBalanceCents={reportProjectedClosingBalance} distribution={reportDistribution} money={(value) => money(value, state)} />
         ) : null}
         <div className="report-footer">HomeCoin • Weekly and monthly household planning • Printed locally</div>
+          </>
+        )}
       </Card>
 
+      {reportPeriod !== 'bills-month' ? <>
       <div className="grid gap-5 xl:grid-cols-2">
         <Card className="p-5">
           <h2 className="text-xl font-bold text-slate-900">Income and expenses by month</h2>
@@ -3234,6 +3362,7 @@ function App() {
           )}
         </div>
       </Card>
+      </> : null}
 
     </section>
   )
@@ -3334,10 +3463,22 @@ function App() {
             {reportPeriod !== 'custom' ? (
               <div className="report-period-navigator">
                 <Button variant="secondary" onClick={() => moveReportPeriod(-1)}>Previous</Button>
-                <div><small>Planning period</small><strong>{reportRangeOptions.label}</strong></div>
+                <div><small>{reportPeriod === 'bills-month' ? 'Bills month' : 'Planning period'}</small><strong>{reportPeriod === 'bills-month' ? monthlyBillsReport.label : reportRangeOptions.label}</strong></div>
                 <Button variant="secondary" onClick={() => setReportReferenceDate(new Date())}>Today</Button>
                 <Button variant="secondary" onClick={() => moveReportPeriod(1)}>Next</Button>
               </div>
+            ) : null}
+
+            {reportPeriod === 'bills-month' ? (
+              <Field label="Bills month">
+                <input
+                  className="input"
+                  type="month"
+                  aria-label="Bills month"
+                  value={monthlyBillsReport.start.slice(0, 7)}
+                  onChange={(event) => event.target.value && setReportReferenceDate(fromIsoDate(`${event.target.value}-01`))}
+                />
+              </Field>
             ) : null}
 
             {reportPeriod === 'custom' ? (
@@ -3363,7 +3504,7 @@ function App() {
         <ModalShell title="Report actions" subtitle="Print or export the selected planning period." onClose={() => setShowReportActions(false)}>
           <div className="grid gap-3">
             <Button variant="primary" onClick={() => { setShowReportActions(false); window.print() }}>Print report</Button>
-            <Button variant="secondary" onClick={() => { setShowReportActions(false); void savePdfReport() }}>Save PDF</Button>
+            <Button variant="secondary" onClick={() => { setShowReportActions(false); void savePdfReport() }}>Export PDF</Button>
             <Button variant="secondary" onClick={() => { setShowReportActions(false); exportReportCsv() }}>Export CSV</Button>
           </div>
         </ModalShell>

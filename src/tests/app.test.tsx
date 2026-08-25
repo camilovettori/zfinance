@@ -449,6 +449,46 @@ describe('HomeCoin app shell', () => {
     )
   }, 20_000)
 
+  it('shows the selected month as a printable bills-only report', async () => {
+    const state = createAugustPlannerState()
+    const expenseCategory = state.categories.find((category) => !['Income', 'Receitas'].includes(category.group))!
+    state.recurringRules = [{
+      id: 'monthly-report-recurring',
+      householdId: state.household.id,
+      name: 'Internet subscription',
+      amountCents: 3_000,
+      frequency: 'monthly',
+      interval: 1,
+      nextDueDate: '2026-07-12',
+      accountId: state.accounts[0].id,
+      categoryId: expenseCategory.id,
+      generateAutomatically: false,
+      reminder: true,
+      active: true,
+    }]
+    window.localStorage.setItem('homecoin:web-state', JSON.stringify(state))
+    const user = userEvent.setup()
+    const { container } = render(<App />)
+    await screen.findByRole('heading', { name: /^Good / })
+    await user.click(screen.getAllByRole('button', { name: /^Reports$/ })[0])
+    await user.click(await screen.findByRole('button', { name: 'Monthly bills list' }))
+    fireEvent.change(screen.getByLabelText('Bills month'), { target: { value: '2026-08' } })
+
+    const table = await waitFor(() => container.querySelector('.monthly-bills-table') as HTMLTableElement)
+    expect(within(table).getByRole('columnheader', { name: 'Due / paid date' })).toBeTruthy()
+    expect(within(table).getByText('Internet subscription')).toBeTruthy()
+    expect(within(table).queryByText('Income 1')).toBeNull()
+    expect(within(table).queryByText('Camilo Car Insurance')).toBeNull()
+    expect(Array.from(table.querySelectorAll('tbody time')).map((time) => time.getAttribute('datetime'))).toEqual([
+      '2026-08-12',
+      '2026-08-20',
+      '2026-08-28',
+    ])
+    expect(within(table).getByText('€4,087.11')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Print' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Export PDF' })).toBeTruthy()
+  }, 20_000)
+
   it('opens the interactive Planner and prefills Add with the selected day', async () => {
     const user = userEvent.setup()
     const { container } = render(<App />)
