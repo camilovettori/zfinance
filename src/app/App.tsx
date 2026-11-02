@@ -673,6 +673,28 @@ function App() {
           }
         }
 
+        // One-time migration: update Everyday account balance to €8,368.32
+        const BALANCE_MIGRATION_KEY = 'everyday-balance-migrated-v1'
+        if (!localStorage.getItem(BALANCE_MIGRATION_KEY)) {
+          const everydayAccount = next.accounts.find(
+            (a) => !a.archived && a.type === 'current' && a.name.toLowerCase().includes('everyday'),
+          )
+          if (everydayAccount) {
+            next = {
+              ...next,
+              accounts: next.accounts.map((a) =>
+                a.id === everydayAccount.id
+                  ? { ...a, openingBalanceCents: 836_832, currentBalanceCents: 836_832 }
+                  : a,
+              ),
+            }
+            next = ensureCalculatedState(next)
+            await saveState(next)
+            localStorage.setItem(BALANCE_MIGRATION_KEY, new Date().toISOString())
+            console.info('[HomeCoin] Updated Everyday account balance to €8,368.32')
+          }
+        }
+
         setState(next)
         setWeekReferenceDate(new Date())
         setCalendarMonth(new Date())

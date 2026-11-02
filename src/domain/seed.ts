@@ -98,7 +98,7 @@ const accounts = (householdId: string): FinancialAccount[] => {
       name: 'Everyday account',
       institution: 'AIB',
       type: 'current' as const,
-      openingBalanceCents: 241_200,
+      openingBalanceCents: 836_832,
       holder: 'Joint',
       accentColor: '#0f766e',
       archived: false,
