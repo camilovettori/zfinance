@@ -673,25 +673,43 @@ function App() {
           }
         }
 
-        // One-time migration: update Everyday account balance to €8,368.32
-        const BALANCE_MIGRATION_KEY = 'everyday-balance-migrated-v1'
+        // One-time migration: set Everyday account so current balance = €8,368.32
+        // recalculateAccountBalances computes: currentBalance = openingBalance + transactionEffects
+        // so we back-calculate: openingBalance = targetBalance - transactionEffects
+        const BALANCE_MIGRATION_KEY = 'everyday-balance-migrated-v2'
         if (!localStorage.getItem(BALANCE_MIGRATION_KEY)) {
           const everydayAccount = next.accounts.find(
             (a) => !a.archived && a.type === 'current' && a.name.toLowerCase().includes('everyday'),
           )
           if (everydayAccount) {
+            const TARGET_BALANCE = 836_832
+            // Calculate the net effect of all transactions on this account
+            const transactionEffect = next.transactions.reduce((total, txn) => {
+              if (txn.status === 'cancelled') return total
+              if (!['paid', 'received'].includes(txn.status)) return total
+              if (txn.type === 'transfer') {
+                if (txn.accountId === everydayAccount.id) return total - txn.amountCents
+                if (txn.counterpartyAccountId === everydayAccount.id) return total + txn.amountCents
+                return total
+              }
+              if (txn.accountId !== everydayAccount.id) return total
+              if (txn.type === 'income' || txn.type === 'adjustment') return total + txn.amountCents
+              if (txn.type === 'expense') return total - txn.amountCents
+              return total
+            }, 0)
+            const newOpening = TARGET_BALANCE - transactionEffect
             next = {
               ...next,
               accounts: next.accounts.map((a) =>
                 a.id === everydayAccount.id
-                  ? { ...a, openingBalanceCents: 836_832, currentBalanceCents: 836_832 }
+                  ? { ...a, openingBalanceCents: newOpening }
                   : a,
               ),
             }
             next = ensureCalculatedState(next)
             await saveState(next)
             localStorage.setItem(BALANCE_MIGRATION_KEY, new Date().toISOString())
-            console.info('[HomeCoin] Updated Everyday account balance to €8,368.32')
+            console.info(`[HomeCoin] Set Everyday opening to ${newOpening} so current = €8,368.32`)
           }
         }
 
