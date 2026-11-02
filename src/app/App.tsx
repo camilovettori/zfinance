@@ -695,6 +695,22 @@ function App() {
           }
         }
 
+        // One-time migration: week starts on Monday (1) instead of Thursday (4)
+        const WEEK_START_MIGRATION_KEY = 'week-start-monday-v1'
+        if (!localStorage.getItem(WEEK_START_MIGRATION_KEY)) {
+          if (next.settings.weekStartDay !== 1 || next.household.weekStartDay !== 1) {
+            next = {
+              ...next,
+              household: { ...next.household, weekStartDay: 1 },
+              settings: { ...next.settings, weekStartDay: 1 },
+            }
+            next = ensureCalculatedState(next)
+            await saveState(next)
+            console.info('[HomeCoin] Changed week start from Thursday to Monday')
+          }
+          localStorage.setItem(WEEK_START_MIGRATION_KEY, new Date().toISOString())
+        }
+
         setState(next)
         setWeekReferenceDate(new Date())
         setCalendarMonth(new Date())
