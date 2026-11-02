@@ -677,8 +677,8 @@ function App() {
         // ensureCalculatedState already ran above, so currentBalanceCents is accurate.
         // We simply adjust openingBalanceCents by the delta between target and current.
         // After recalculation: newCurrent = (opening + delta) + effects = oldCurrent + delta = TARGET
-        const BALANCE_MIGRATION_KEY_V3 = 'everyday-balance-migrated-v3'
-        if (!localStorage.getItem(BALANCE_MIGRATION_KEY_V3)) {
+        const BALANCE_MIGRATION_KEY_V4 = 'everyday-balance-migrated-v4'
+        if (!localStorage.getItem(BALANCE_MIGRATION_KEY_V4)) {
           const everydayAccount = next.accounts.find(
             (a) => !a.archived && a.type === 'current' && a.name.toLowerCase().includes('everyday'),
           )
@@ -698,7 +698,7 @@ function App() {
               await saveState(next)
               console.info(`[HomeCoin] Adjusted Everyday opening by ${delta} cents → current = €8,368.32`)
             }
-            localStorage.setItem(BALANCE_MIGRATION_KEY_V3, new Date().toISOString())
+            localStorage.setItem(BALANCE_MIGRATION_KEY_V4, new Date().toISOString())
           }
         }
 
