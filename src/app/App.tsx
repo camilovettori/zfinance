@@ -674,42 +674,31 @@ function App() {
         }
 
         // One-time migration: set Everyday account so current balance = €8,368.32
-        // recalculateAccountBalances computes: currentBalance = openingBalance + transactionEffects
-        // so we back-calculate: openingBalance = targetBalance - transactionEffects
-        const BALANCE_MIGRATION_KEY = 'everyday-balance-migrated-v2'
-        if (!localStorage.getItem(BALANCE_MIGRATION_KEY)) {
+        // ensureCalculatedState already ran above, so currentBalanceCents is accurate.
+        // We simply adjust openingBalanceCents by the delta between target and current.
+        // After recalculation: newCurrent = (opening + delta) + effects = oldCurrent + delta = TARGET
+        const BALANCE_MIGRATION_KEY_V3 = 'everyday-balance-migrated-v3'
+        if (!localStorage.getItem(BALANCE_MIGRATION_KEY_V3)) {
           const everydayAccount = next.accounts.find(
             (a) => !a.archived && a.type === 'current' && a.name.toLowerCase().includes('everyday'),
           )
           if (everydayAccount) {
             const TARGET_BALANCE = 836_832
-            // Calculate the net effect of all transactions on this account
-            const transactionEffect = next.transactions.reduce((total, txn) => {
-              if (txn.status === 'cancelled') return total
-              if (!['paid', 'received'].includes(txn.status)) return total
-              if (txn.type === 'transfer') {
-                if (txn.accountId === everydayAccount.id) return total - txn.amountCents
-                if (txn.counterpartyAccountId === everydayAccount.id) return total + txn.amountCents
-                return total
+            const delta = TARGET_BALANCE - everydayAccount.currentBalanceCents
+            if (delta !== 0) {
+              next = {
+                ...next,
+                accounts: next.accounts.map((a) =>
+                  a.id === everydayAccount.id
+                    ? { ...a, openingBalanceCents: a.openingBalanceCents + delta }
+                    : a,
+                ),
               }
-              if (txn.accountId !== everydayAccount.id) return total
-              if (txn.type === 'income' || txn.type === 'adjustment') return total + txn.amountCents
-              if (txn.type === 'expense') return total - txn.amountCents
-              return total
-            }, 0)
-            const newOpening = TARGET_BALANCE - transactionEffect
-            next = {
-              ...next,
-              accounts: next.accounts.map((a) =>
-                a.id === everydayAccount.id
-                  ? { ...a, openingBalanceCents: newOpening }
-                  : a,
-              ),
+              next = ensureCalculatedState(next)
+              await saveState(next)
+              console.info(`[HomeCoin] Adjusted Everyday opening by ${delta} cents → current = €8,368.32`)
             }
-            next = ensureCalculatedState(next)
-            await saveState(next)
-            localStorage.setItem(BALANCE_MIGRATION_KEY, new Date().toISOString())
-            console.info(`[HomeCoin] Set Everyday opening to ${newOpening} so current = €8,368.32`)
+            localStorage.setItem(BALANCE_MIGRATION_KEY_V3, new Date().toISOString())
           }
         }
 
