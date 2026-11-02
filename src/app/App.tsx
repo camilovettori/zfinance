@@ -174,6 +174,7 @@ type RuleDraft = {
   personId: string
   notes: string
   active: boolean
+  adjustToPrevFriday: boolean
 }
 
 type OnboardingDraft = {
@@ -621,11 +622,57 @@ function App() {
       try {
         const stored = await loadState()
         const cleanup = cleanupOneOffRecurringDuplicates(stored ?? createBlankState())
-        const next = ensureCalculatedState(cleanup.state)
+        let next = ensureCalculatedState(cleanup.state)
         if (cleanup.removed.length) {
           console.info(`[HomeCoin] Removed ${cleanup.removed.length} duplicate one-off ${cleanup.removed.length === 1 ? 'entry' : 'entries'} that matched recurring rules.`)
           await saveState(next)
         }
+
+        // One-time migration: convert Camilo weekly salary to monthly €2,883
+        const SALARY_MIGRATION_KEY = 'camilo-salary-migrated-v1'
+        if (!localStorage.getItem(SALARY_MIGRATION_KEY)) {
+          const camiloWeeklySalary = next.recurringRules.find(
+            (rule) =>
+              rule.active &&
+              rule.frequency === 'weekly' &&
+              (rule.name.toLowerCase().includes('camilo') ||
+                rule.name.toLowerCase().includes('my salary') ||
+                rule.name.toLowerCase().includes('meu sal')) &&
+              ['Income', 'Receitas'].includes(
+                next.categories.find((c) => c.id === rule.categoryId)?.group ?? '',
+              ),
+          )
+
+          if (camiloWeeklySalary) {
+            next = {
+              ...next,
+              recurringRules: [
+                ...next.recurringRules.filter((rule) => rule.id !== camiloWeeklySalary.id),
+                {
+                  id: crypto.randomUUID(),
+                  householdId: next.household.id,
+                  name: 'Camilo Salary',
+                  amountCents: 288_300,
+                  frequency: 'monthly' as const,
+                  interval: 1,
+                  nextDueDate: '2026-09-25',
+                  accountId: camiloWeeklySalary.accountId,
+                  categoryId: camiloWeeklySalary.categoryId,
+                  personId: camiloWeeklySalary.personId,
+                  generateAutomatically: true,
+                  reminder: true,
+                  active: true,
+                  adjustToPrevFriday: true,
+                },
+              ],
+            }
+            next = ensureCalculatedState(next)
+            await saveState(next)
+            localStorage.setItem(SALARY_MIGRATION_KEY, new Date().toISOString())
+            console.info('[HomeCoin] Migrated Camilo salary: weekly → monthly €2,883 on 25th')
+          }
+        }
+
         setState(next)
         setWeekReferenceDate(new Date())
         setCalendarMonth(new Date())
@@ -864,6 +911,7 @@ function App() {
         personId: rule?.personId ?? defaultPersonId(state),
         notes: rule?.notes ?? '',
         active: rule?.active ?? true,
+        adjustToPrevFriday: rule?.adjustToPrevFriday ?? false,
       },
     })
   }
@@ -1294,6 +1342,7 @@ function App() {
       reminder: true,
       endDate: undefined,
       active: ruleModal.draft.active,
+      adjustToPrevFriday: ruleModal.draft.adjustToPrevFriday || undefined,
     }
 
     await commit((draft) => ({
@@ -3861,6 +3910,21 @@ function App() {
                 <option value="yearly">Yearly</option>
               </select>
             </Field>
+            {['monthly', 'yearly'].includes(ruleModal.draft.frequency) && (
+              <label className="flex items-center gap-2 text-sm py-1" style={{ color: 'var(--text)' }}>
+                <input
+                  type="checkbox"
+                  checked={ruleModal.draft.adjustToPrevFriday}
+                  onChange={(event) =>
+                    setRuleModal((current) =>
+                      current ? { ...current, draft: { ...current.draft, adjustToPrevFriday: event.target.checked } } : current,
+                    )
+                  }
+                  className="accent-[var(--accent)]"
+                />
+                If date falls on Sat/Sun/Mon, use previous Friday
+              </label>
+            )}
             <Field label="Account">
               <select
                 className="select"

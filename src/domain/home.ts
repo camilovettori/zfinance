@@ -182,6 +182,19 @@ const stepDate = (date: Date, frequency: RecurrenceFrequency, interval: number) 
   return addMonths(date, months)
 }
 
+/**
+ * If a date falls on Saturday (6), Sunday (0), or Monday (1),
+ * shift it back to the previous Friday.
+ * Sat → Fri (−1 day), Sun → Fri (−2 days), Mon → Fri (−3 days)
+ */
+export const adjustToPreviousFriday = (date: Date): Date => {
+  const day = date.getDay() // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat
+  if (day === 6) return addDays(date, -1)  // Sat → Fri
+  if (day === 0) return addDays(date, -2)  // Sun → Fri
+  if (day === 1) return addDays(date, -3)  // Mon → Fri
+  return date
+}
+
 const expandRecurringDates = (rule: RecurringRule, start: Date, end: Date) => {
   const dates: Date[] = []
   let current = fromIsoDate(rule.nextDueDate)
@@ -194,7 +207,11 @@ const expandRecurringDates = (rule: RecurringRule, start: Date, end: Date) => {
   }
 
   while (!isAfter(current, end) && iterations < limit) {
-    dates.push(current)
+    // Apply business-day adjustment if the rule requests it
+    const adjusted = rule.adjustToPrevFriday ? adjustToPreviousFriday(current) : current
+    dates.push(adjusted)
+    // IMPORTANT: step from the ORIGINAL date (current), not the adjusted one,
+    // so monthly stepping stays anchored to the original day (e.g. 25th)
     current = stepDate(current, rule.frequency, rule.interval)
     iterations += 1
   }

@@ -136,6 +136,7 @@ export interface RecurringRule {
   endDate?: string
   active: boolean
   notes?: string
+  adjustToPrevFriday?: boolean
 }
 
 export interface Budget {
