@@ -17,16 +17,17 @@ export const applyRequestedCamiloUpdates = (state: AppState) => {
 const salaryNames = new Set(['camilo wages', 'camilo wage', 'camilo salary'])
 
 export function applyCamiloPlanUpdate(state: AppState): AppState {
-  const salaries = state.recurringRules.filter((rule) => rule.active
-    && salaryNames.has(rule.name.trim().toLowerCase())
+  const salaries = state.recurringRules.filter((rule) => salaryNames.has(rule.name.trim().toLowerCase())
     && ['Income', 'Receitas'].includes(state.categories.find((category) => category.id === rule.categoryId)?.group ?? ''))
-  if (!salaries.length) return state
+  const activeSalaries = salaries.filter((rule) => rule.active)
+  if (!activeSalaries.length) return state
 
-  const primary = salaries.find((rule) => rule.frequency === 'monthly') ?? salaries[0]
-  const correctSalary = primary.name === 'Camilo Wage' && primary.frequency === 'monthly'
+  const primary = activeSalaries.find((rule) => rule.frequency === 'monthly')
+    ?? salaries.find((rule) => rule.frequency === 'monthly') ?? activeSalaries[0]
+  const correctSalary = primary.active && primary.name === 'Camilo Wage' && primary.frequency === 'monthly'
     && primary.interval === 1 && primary.amountCents === 288300
     && primary.nextDueDate.slice(-2) === '25' && primary.adjustToPrevFriday === true && !primary.endDate
-  if (correctSalary && salaries.length === 1 && state.household.weekStartDay === 1 && state.settings.weekStartDay === 1) return state
+  if (correctSalary && activeSalaries.length === 1 && state.household.weekStartDay === 1 && state.settings.weekStartDay === 1) return state
 
   const salaryIds = new Set(salaries.map((rule) => rule.id))
   return {
@@ -35,10 +36,10 @@ export function applyCamiloPlanUpdate(state: AppState): AppState {
     settings: { ...state.settings, weekStartDay: 1 },
     recurringRules: state.recurringRules.map((rule) => {
       if (rule.id === primary.id) return correctSalary ? rule : {
-        ...rule, name: 'Camilo Wage', amountCents: 288300, frequency: 'monthly', interval: 1,
+        ...rule, active: true, name: 'Camilo Wage', amountCents: 288300, frequency: 'monthly', interval: 1,
         nextDueDate: '2026-11-25', adjustToPrevFriday: true, endDate: undefined,
       }
-      return salaryIds.has(rule.id) ? { ...rule, active: false } : rule
+      return salaryIds.has(rule.id) && rule.active ? { ...rule, active: false } : rule
     }),
   }
 }

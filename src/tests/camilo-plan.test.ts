@@ -14,6 +14,20 @@ function legacyPlan() {
 }
 
 describe('requested Camilo plan', () => {
+  it('activates the existing monthly salary and stops the weekly rule when the monthly record was inactive', () => {
+    const state = legacyPlan()
+    const weekly = state.recurringRules[0]
+    state.recurringRules.push({ ...weekly, id: 'existing-monthly', name: 'Camilo Wage', frequency: 'monthly', amountCents: 288300,
+      nextDueDate: '2026-11-25', active: false, adjustToPrevFriday: true })
+    const updated = applyCamiloPlanUpdate(state)
+    expect(updated.recurringRules.find((rule) => rule.id === weekly.id)?.active).toBe(false)
+    expect(updated.recurringRules.find((rule) => rule.id === 'existing-monthly')).toMatchObject({ active: true, frequency: 'monthly', amountCents: 288300, adjustToPrevFriday: true })
+    const items = buildVisibleItems(updated, '2026-11-01', '2026-12-31', new Date(2026, 10, 3)).filter((item) => item.title === 'Camilo Wage')
+    expect(items.map((item) => item.date)).toEqual(['2026-11-25', '2026-12-25'])
+    expect(items.every((item) => item.recurrenceRuleId === 'existing-monthly')).toBe(true)
+    expect(updated.transactions).toBe(state.transactions)
+    expect(applyCamiloPlanUpdate(updated)).toBe(updated)
+  })
   it('keeps Remarkable Iris on the 17th and disables the confirmed duplicate on the 18th without deleting history', () => {
     const state = legacyPlan()
     const base = { ...state.recurringRules[0], name: 'Remarkable Iris', amountCents: 399, frequency: 'monthly' as const }
