@@ -114,7 +114,7 @@ export interface Transaction {
   tags: string[]
   notes: string
   receiptUrl?: string
-  source: 'manual' | 'imported'
+  source: 'manual' | 'imported' | 'whatsapp'
   splits: TransactionSplit[]
   createdAt: string
   updatedAt: string

@@ -47,3 +47,4 @@ output/
 
 # Generated HomeCoin exports
 homecoin-month-planner.pdf
+supabase/.temp/

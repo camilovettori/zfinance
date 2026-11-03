@@ -43,7 +43,7 @@ const transactionSchema = z.object({
   accountId: z.string(), counterpartyAccountId: z.string().optional(), transactionDate: financialDate, dueDate: financialDate.optional(),
   paidDate: financialDate.optional(), status: z.enum(['planned', 'pending', 'paid', 'received', 'overdue', 'cancelled']),
   personId: z.string().optional(), payee: z.string().optional(), paymentMethod: z.string().optional(), recurrenceRuleId: z.string().optional(),
-  tags: z.array(z.string()), notes: z.string(), receiptUrl: z.string().optional(), source: z.enum(['manual', 'imported']),
+  tags: z.array(z.string()), notes: z.string(), receiptUrl: z.string().optional(), source: z.enum(['manual', 'imported', 'whatsapp']),
   splits: z.array(splitSchema), createdAt: isoTimestamp, updatedAt: isoTimestamp, cancelledAt: isoTimestamp.optional(),
 })
 

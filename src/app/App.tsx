@@ -112,6 +112,7 @@ import { PlannerWeekNavigation } from './planner/PlannerWeekNavigation'
 import { PlannerMonthView } from './planner/PlannerMonthView'
 
 const SharingPanel = lazy(() => import('@/components/sync/SharingPanel').then((module) => ({ default: module.SharingPanel })))
+const WhatsAppSettings = lazy(() => import('@/components/WhatsAppSettings').then((module) => ({ default: module.WhatsAppSettings })))
 
 type CalendarMode = 'month' | 'list'
 type ReportPeriod = 'week' | 'month' | 'bills-month' | 'year' | 'custom'
@@ -3126,6 +3127,7 @@ function App() {
         <div><p className="eyebrow">Make it yours</p><h1>Settings</h1><p>Household preferences, privacy, categories, and local data tools.</p></div>
       </div>
       <div className="settings-grid">
+        <Suspense fallback={<p>Loading WhatsApp settings…</p>}><WhatsAppSettings state={state} /></Suspense>
         <Card className="p-5 sync-settings-card">
           <div className="settings-card-title"><House size={20} /><div><h2>Sharing & sync</h2><p>Optional Supabase account and shared household.</p></div></div>
           <div className="mt-5"><Suspense fallback={<p>Loading sharing settings…</p>}><SharingPanel state={state} onStateChanged={(syncedState) => { stateRef.current = syncedState; setState(syncedState) }} /></Suspense></div>

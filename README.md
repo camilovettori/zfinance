@@ -87,6 +87,7 @@ pnpm build
 
 ## Documentation
 
+- [WhatsApp assistant: setup and activation](docs/WHATSAPP_SETUP.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Mobile](docs/MOBILE.md)
 - [PWA](docs/PWA.md)
