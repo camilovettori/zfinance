@@ -1,9 +1,35 @@
 import { describe, expect, it } from 'vitest'
 import { addDays } from 'date-fns'
-import { calculateDashboardSummary, ensureCalculatedState } from '@/domain/calculations'
+import { calculateBudgetSummary, calculateDashboardSummary, ensureCalculatedState } from '@/domain/calculations'
 import { createDemoState } from '@/domain/seed'
 
 describe('financial calculations', () => {
+  it('counts only completed current-month expenses in category and person budgets', () => {
+    const state = createDemoState()
+    const categoryId = state.categories[0].id
+    const personId = state.members[0].id
+    const today = new Date()
+    const month = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
+    const previous = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+    const previousMonth = `${previous.getFullYear()}-${String(previous.getMonth() + 1).padStart(2, '0')}`
+    const base = { ...state.transactions[0], categoryId, personId, type: 'expense' as const }
+    state.transactions = [
+      { ...base, id: 'current', transactionDate: `${month}-01`, amountCents: 1200, status: 'paid' },
+      { ...base, id: 'previous', transactionDate: `${previousMonth}-01`, amountCents: 9000, status: 'paid' },
+      { ...base, id: 'pending', transactionDate: `${month}-01`, amountCents: 3000, status: 'pending' },
+      { ...base, id: 'cancelled', transactionDate: `${month}-01`, amountCents: 4000, status: 'cancelled' },
+    ]
+    state.budgets = (['general', 'category', 'person'] as const).map((scope) => ({
+      ...state.budgets[0], id: scope, scope, categoryId, personId, archived: false, limitCents: 5000,
+    }))
+
+    for (const summary of calculateBudgetSummary(state)) {
+      expect(summary.spent).toBe(1200)
+      expect(summary.remaining).toBe(3800)
+      expect(summary.consumedPercent).toBe(24)
+    }
+  })
+
   it('keeps consolidated balance unchanged for transfers', () => {
     const state = ensureCalculatedState(createDemoState())
     const [accountA, accountB] = state.accounts.slice(0, 2)

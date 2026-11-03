@@ -622,100 +622,10 @@ function App() {
       try {
         const stored = await loadState()
         const cleanup = cleanupOneOffRecurringDuplicates(stored ?? createBlankState())
-        let next = ensureCalculatedState(cleanup.state)
+        const next = ensureCalculatedState(cleanup.state)
         if (cleanup.removed.length) {
           console.info(`[HomeCoin] Removed ${cleanup.removed.length} duplicate one-off ${cleanup.removed.length === 1 ? 'entry' : 'entries'} that matched recurring rules.`)
           await saveState(next)
-        }
-
-        // One-time migration: convert Camilo weekly salary to monthly €2,883
-        const SALARY_MIGRATION_KEY = 'camilo-salary-migrated-v1'
-        if (!localStorage.getItem(SALARY_MIGRATION_KEY)) {
-          const camiloWeeklySalary = next.recurringRules.find(
-            (rule) =>
-              rule.active &&
-              rule.frequency === 'weekly' &&
-              (rule.name.toLowerCase().includes('camilo') ||
-                rule.name.toLowerCase().includes('my salary') ||
-                rule.name.toLowerCase().includes('meu sal')) &&
-              ['Income', 'Receitas'].includes(
-                next.categories.find((c) => c.id === rule.categoryId)?.group ?? '',
-              ),
-          )
-
-          if (camiloWeeklySalary) {
-            next = {
-              ...next,
-              recurringRules: [
-                ...next.recurringRules.filter((rule) => rule.id !== camiloWeeklySalary.id),
-                {
-                  id: crypto.randomUUID(),
-                  householdId: next.household.id,
-                  name: 'Camilo Salary',
-                  amountCents: 288_300,
-                  frequency: 'monthly' as const,
-                  interval: 1,
-                  nextDueDate: '2026-09-25',
-                  accountId: camiloWeeklySalary.accountId,
-                  categoryId: camiloWeeklySalary.categoryId,
-                  personId: camiloWeeklySalary.personId,
-                  generateAutomatically: true,
-                  reminder: true,
-                  active: true,
-                  adjustToPrevFriday: true,
-                },
-              ],
-            }
-            next = ensureCalculatedState(next)
-            await saveState(next)
-            localStorage.setItem(SALARY_MIGRATION_KEY, new Date().toISOString())
-            console.info('[HomeCoin] Migrated Camilo salary: weekly → monthly €2,883 on 25th')
-          }
-        }
-
-        // One-time migration: set Everyday account so current balance = €8,368.32
-        // ensureCalculatedState already ran above, so currentBalanceCents is accurate.
-        // We simply adjust openingBalanceCents by the delta between target and current.
-        // After recalculation: newCurrent = (opening + delta) + effects = oldCurrent + delta = TARGET
-        const BALANCE_MIGRATION_KEY_V4 = 'everyday-balance-migrated-v4'
-        if (!localStorage.getItem(BALANCE_MIGRATION_KEY_V4)) {
-          const everydayAccount = next.accounts.find(
-            (a) => !a.archived && a.type === 'current' && a.name.toLowerCase().includes('everyday'),
-          )
-          if (everydayAccount) {
-            const TARGET_BALANCE = 836_832
-            const delta = TARGET_BALANCE - everydayAccount.currentBalanceCents
-            if (delta !== 0) {
-              next = {
-                ...next,
-                accounts: next.accounts.map((a) =>
-                  a.id === everydayAccount.id
-                    ? { ...a, openingBalanceCents: a.openingBalanceCents + delta }
-                    : a,
-                ),
-              }
-              next = ensureCalculatedState(next)
-              await saveState(next)
-              console.info(`[HomeCoin] Adjusted Everyday opening by ${delta} cents → current = €8,368.32`)
-            }
-            localStorage.setItem(BALANCE_MIGRATION_KEY_V4, new Date().toISOString())
-          }
-        }
-
-        // One-time migration: week starts on Monday (1) instead of Thursday (4)
-        const WEEK_START_MIGRATION_KEY = 'week-start-monday-v1'
-        if (!localStorage.getItem(WEEK_START_MIGRATION_KEY)) {
-          if (next.settings.weekStartDay !== 1 || next.household.weekStartDay !== 1) {
-            next = {
-              ...next,
-              household: { ...next.household, weekStartDay: 1 },
-              settings: { ...next.settings, weekStartDay: 1 },
-            }
-            next = ensureCalculatedState(next)
-            await saveState(next)
-            console.info('[HomeCoin] Changed week start from Thursday to Monday')
-          }
-          localStorage.setItem(WEEK_START_MIGRATION_KEY, new Date().toISOString())
         }
 
         setState(next)

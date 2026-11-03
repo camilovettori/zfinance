@@ -537,13 +537,13 @@ export function calculateBudgetSummary(state: AppState) {
         budget.scope === 'general'
           ? totals.expenses
           : budget.scope === 'category' && budget.categoryId
-            ? state.transactions
+            ? totals.monthlyTransactions
                 .filter((transaction) => transaction.type === 'expense' && transactionCompleted(transaction))
                 .filter((transaction) => transaction.categoryId === budget.categoryId)
                 .map((transaction) => transaction.amountCents)
                 .reduce((total, value) => total + value, 0)
             : budget.scope === 'person' && budget.personId
-              ? state.transactions
+              ? totals.monthlyTransactions
                   .filter((transaction) => transaction.type === 'expense' && transactionCompleted(transaction))
                   .filter((transaction) => transaction.personId === budget.personId)
                   .map((transaction) => transaction.amountCents)

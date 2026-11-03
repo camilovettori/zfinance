@@ -176,6 +176,9 @@ const setViewport = (width: number) => {
 
 describe('HomeCoin app shell', () => {
   beforeEach(() => {
+    // Planner fixtures describe August 2026; keep Date fixed without mocking async timers.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 7, 1, 12))
     setViewport(1440)
     window.localStorage.setItem('homecoin:web-state', JSON.stringify(createDemoState()))
     authMocks.session.mockReset().mockResolvedValue(fakeSession)
@@ -194,9 +197,34 @@ describe('HomeCoin app shell', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     window.localStorage.clear()
     window.history.replaceState({}, '', '/')
     Reflect.deleteProperty(window, '__TAURI_INTERNALS__')
+  })
+
+  it('preserves saved balances, salary rules, and week preferences on startup', async () => {
+    const stored = createAugustPlannerState()
+    stored.accounts[0].name = 'Everyday'
+    stored.accounts[0].openingBalanceCents = 12345
+    stored.recurringRules = [{
+      ...createDemoState().recurringRules[0],
+      id: 'saved-salary', householdId: stored.household.id, name: 'My salary',
+      categoryId: stored.categories.find((category) => ['Income', 'Receitas'].includes(category.group))!.id,
+      accountId: stored.accounts[0].id, frequency: 'weekly', amountCents: 10000,
+      nextDueDate: '2026-08-07', active: true,
+    }]
+    const save = vi.fn(async (next: AppState) => next)
+    setAppStateRepositoryForTests({
+      load: async () => structuredClone(stored), save, clear: async () => undefined,
+      getMetadata: async () => ({ source: 'indexeddb', schemaVersion: stored.schemaVersion, updatedAt: null, migratedFromLocalStorage: false }),
+    })
+    render(<App />)
+    await screen.findByRole('heading', { name: /^Good / })
+    expect(save).not.toHaveBeenCalled()
+    expect(window.localStorage.getItem('camilo-salary-migrated-v1')).toBeNull()
+    expect(window.localStorage.getItem('everyday-balance-migrated-v4')).toBeNull()
+    expect(window.localStorage.getItem('week-start-monday-v1')).toBeNull()
   })
 
   it('uses a small-screen onboarding wizard that preserves answers when going back', async () => {

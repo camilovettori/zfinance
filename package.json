@@ -13,7 +13,7 @@
     "test": "vitest run",
     "test:pwa": "pnpm build:web && node scripts/test-pwa.mjs",
     "test:watch": "vitest",
-    "test:e2e": "pnpm build:web && playwright test",
+    "test:e2e": "node scripts/run-local-e2e.mjs",
     "test:e2e:sync": "node scripts/run-sync-e2e.mjs",
     "lint": "eslint .",
     "format": "prettier --write .",
