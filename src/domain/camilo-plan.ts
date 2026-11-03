@@ -20,7 +20,7 @@ export function applyCamiloPlanUpdate(state: AppState): AppState {
   const salaries = state.recurringRules.filter((rule) => salaryNames.has(rule.name.trim().toLowerCase())
     && ['Income', 'Receitas'].includes(state.categories.find((category) => category.id === rule.categoryId)?.group ?? ''))
   const activeSalaries = salaries.filter((rule) => rule.active)
-  if (!activeSalaries.length) return state
+  if (!salaries.length) return state
 
   const primary = activeSalaries.find((rule) => rule.frequency === 'monthly')
     ?? salaries.find((rule) => rule.frequency === 'monthly') ?? activeSalaries[0]

@@ -14,6 +14,21 @@ function legacyPlan() {
 }
 
 describe('requested Camilo plan', () => {
+  it('repairs a partially applied update with both salary rules inactive', () => {
+    const state = legacyPlan()
+    const weekly = state.recurringRules[0]
+    weekly.active = false
+    state.recurringRules.push({ ...weekly, id: 'inactive-monthly', name: 'Camilo Wage', frequency: 'monthly',
+      amountCents: 288300, nextDueDate: '2026-11-25', adjustToPrevFriday: true })
+    const updated = applyCamiloPlanUpdate(state)
+    expect(updated.recurringRules.find((rule) => rule.id === weekly.id)?.active).toBe(false)
+    const items = buildVisibleItems(updated, '2026-11-01', '2026-12-31', new Date(2026, 10, 3))
+      .filter((item) => item.title === 'Camilo Wage')
+    expect(items.map((item) => [item.date, item.amountCents])).toEqual([
+      ['2026-11-25', 288300], ['2026-12-25', 288300],
+    ])
+    expect(applyCamiloPlanUpdate(updated)).toBe(updated)
+  })
   it('activates the existing monthly salary and stops the weekly rule when the monthly record was inactive', () => {
     const state = legacyPlan()
     const weekly = state.recurringRules[0]
