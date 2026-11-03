@@ -5,6 +5,7 @@ import App from '@/app/App'
 import { createDemoState } from '@/domain/seed'
 import type { AppState } from '@/domain/model'
 import { todayIso } from '@/lib/date'
+import { currentSpendableBalance } from '@/domain/cashflow'
 import { setAppStateRepositoryForTests } from '@/persistence'
 import { webDatabase } from '@/persistence/web/db'
 
@@ -227,6 +228,32 @@ describe('HomeCoin app shell', () => {
     expect(window.localStorage.getItem('week-start-monday-v1')).toBeNull()
   })
 
+  it('loads the requested Camilo salary update and shows Monday through Sunday', async () => {
+    vi.setSystemTime(new Date(2026, 10, 3, 12))
+    const stored = createDemoState()
+    stored.household.weekStartDay = stored.settings.weekStartDay = 4
+    stored.household.currency = stored.settings.currency = 'EUR'
+    stored.household.locale = stored.settings.locale = 'en-IE'
+    stored.accounts = stored.accounts.map((account) => ({ ...account, currency: 'EUR' }))
+    stored.transactions = stored.transactions.filter((transaction) => ['paid', 'received'].includes(transaction.status))
+    stored.recurringRules[0].name = 'Camilo Wages'
+    window.localStorage.setItem('homecoin:web-state', JSON.stringify(stored))
+    const user = userEvent.setup()
+    const { container } = render(<App />)
+    await screen.findByRole('heading', { name: /^Good / })
+    await user.click(screen.getByRole('button', { name: 'Planner' }))
+    expect(container.querySelectorAll('.planning-week')).toHaveLength(1)
+    expect(container.querySelector('.planning-week')?.getAttribute('data-week-start')).toBe('2026-11-02')
+    const days = container.querySelectorAll('.planning-day')
+    expect(days[0].getAttribute('data-date')).toBe('2026-11-02')
+    expect(days[6].getAttribute('data-date')).toBe('2026-11-08')
+    const saved = (await webDatabase.appState.toArray()).find((row) => row.payload.household.id === stored.household.id)?.payload
+    expect(saved?.recurringRules[0]).toMatchObject({ name: 'Camilo Wage', frequency: 'monthly', amountCents: 288300, adjustToPrevFriday: true })
+    expect(saved).toBeTruthy()
+    expect(currentSpendableBalance(saved!)).toBe(812194)
+    expect(saved?.transactions).toEqual(stored.transactions)
+  })
+
   it('uses a small-screen onboarding wizard that preserves answers when going back', async () => {
     setViewport(390)
     window.localStorage.clear()
@@ -386,7 +413,7 @@ describe('HomeCoin app shell', () => {
     const navigation = screen.getByRole('navigation', { name: 'Main navigation' })
     expect(within(navigation).getAllByRole('button').map((button) => button.textContent)).toEqual(['Dashboard', 'Planner', 'Savings', 'Reports', 'Settings'])
     await user.click(screen.getByRole('button', { name: 'Planner' }))
-    expect(await screen.findByRole('heading', { name: / Planner$/ })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Planner' })).toBeTruthy()
     expect(container.querySelector('.planning-day-grid')?.children).toHaveLength(7)
   })
 
@@ -529,10 +556,10 @@ describe('HomeCoin app shell', () => {
     await user.click(screen.getAllByRole('button', { name: /^Planner$/ })[0])
 
     expect(await screen.findByRole('heading', { name: 'Planner' })).toBeTruthy()
-    expect(screen.getByRole('heading', { name: / Planner$/ })).toBeTruthy()
-    expect(container.querySelectorAll('.planning-week').length).toBeGreaterThanOrEqual(4)
-    expect(container.querySelectorAll('.planning-day').length % 7).toBe(0)
-    expect(screen.getAllByText('Planner cycle summary').length).toBeGreaterThan(0)
+    expect(screen.getByRole('heading', { name: 'Planner' })).toBeTruthy()
+    expect(container.querySelectorAll('.planning-week')).toHaveLength(1)
+    expect(container.querySelectorAll('.planning-day')).toHaveLength(7)
+    expect(screen.getByRole('region', { name: 'Balance forecast summary' })).toBeTruthy()
 
     const addForDay = screen.getAllByRole('button', { name: /^Add item on / })[0]
     const selectedDate = addForDay.getAttribute('aria-label')!.replace('Add item on ', '')
@@ -541,35 +568,53 @@ describe('HomeCoin app shell', () => {
     expect((screen.getByLabelText('Due date') as HTMLInputElement).value).toBe(selectedDate)
   }, 20_000)
 
-  it('shows only the strict August planner-cycle result, then advances to 3 September', async () => {
+  it('opens the current week and navigates one week at a time across month boundaries', async () => {
+    vi.setSystemTime(new Date(2026, 7, 11, 12))
     window.localStorage.setItem('homecoin:web-state', JSON.stringify(createAugustPlannerState()))
     const user = userEvent.setup()
     const { container } = render(<App />)
     await screen.findByRole('heading', { name: /^Good / })
-    await user.click(screen.getAllByRole('button', { name: /^Planner$/ })[0])
+    await user.click(screen.getByRole('button', { name: 'Planner' }))
+    const expectWeek = (start: string) => {
+      expect(container.querySelectorAll('.planning-week')).toHaveLength(1)
+      expect(container.querySelector('.planning-week')?.getAttribute('data-week-start')).toBe(start)
+      expect(container.querySelectorAll('.planning-day')).toHaveLength(7)
+    }
+    expectWeek('2026-08-06')
+    expect(container.querySelector('.planning-week')?.getAttribute('data-current-week')).toBe('true')
+    await user.click(screen.getByRole('button', { name: 'Previous planner week' }))
+    expectWeek('2026-07-30')
+    await user.click(screen.getByRole('button', { name: 'Previous planner week' }))
+    expectWeek('2026-07-23')
+    await user.click(screen.getByRole('button', { name: 'Next planner week' }))
+    expectWeek('2026-07-30')
+    await user.click(screen.getByRole('button', { name: /^Today$/ }))
+    expectWeek('2026-08-06')
+    for (let week = 0; week < 4; week++) await user.click(screen.getByRole('button', { name: 'Next planner week' }))
+    expectWeek('2026-09-03')
+    await user.click(screen.getByRole('button', { name: 'Previous planner week' }))
+    expectWeek('2026-08-27')
+    await user.click(screen.getByRole('button', { name: 'Dashboard' }))
+    await user.click(screen.getByRole('button', { name: 'Planner' }))
+    expectWeek('2026-08-06')
+  }, 20_000)
 
-    const summary = await waitFor(() => container.querySelector('.monthly-grand-summary')!)
-    expect(within(summary as HTMLElement).getByText('Planner cycle summary')).toBeTruthy()
-    expect(within(summary as HTMLElement).queryByText('Calendar month result')).toBeNull()
-    expect(within(summary as HTMLElement).getByText('Total cycle income')).toBeTruthy()
-    expect(within(summary as HTMLElement).getByText('Total cycle bills')).toBeTruthy()
-    expect(within(summary as HTMLElement).getByText('Cycle closing balance')).toBeTruthy()
-    expect(within(summary as HTMLElement).getAllByText('€4,400.00').length).toBeGreaterThan(0)
-    expect(within(summary as HTMLElement).getAllByText('€4,384.51').length).toBeGreaterThan(0)
-    expect(within(summary as HTMLElement).getAllByText('€15.49').length).toBeGreaterThan(0)
-    expect(within(summary as HTMLElement).queryByText('€342.89')).toBeNull()
-    expect(within(summary as HTMLElement).queryByText('€552.35')).toBeNull()
-
-    const periods = container.querySelector('.planner-periods')!
-    expect(within(periods as HTMLElement).queryByText('Calendar month')).toBeNull()
-    expect(within(periods as HTMLElement).getByText('30 Jul–2 Sept')).toBeTruthy()
-    expect(within(periods as HTMLElement).getByText('3 Sept')).toBeTruthy()
-
-    await user.click(screen.getByRole('button', { name: 'Next →' }))
-    await waitFor(() => expect(container.querySelector('.planning-day[data-date="2026-09-03"]')).toBeTruthy())
-    expect(container.querySelector('.planning-day[data-date="2026-09-01"]')).toBeNull()
-    expect(container.querySelector('.planning-day[data-date="2026-09-02"]')).toBeNull()
-    expect(within(container.querySelector('.planner-periods') as HTMLElement).getByText('3–30 Sept')).toBeTruthy()
+  it('shows calendar month and year balances without the duplicated header or cycle summary', async () => {
+    window.localStorage.setItem('homecoin:web-state', JSON.stringify(createAugustPlannerState()))
+    const user = userEvent.setup()
+    const { container } = render(<App />)
+    await screen.findByRole('heading', { name: /^Good / })
+    await user.click(screen.getByRole('button', { name: 'Planner' }))
+    expect(screen.getAllByRole('heading', { name: 'Planner' })).toHaveLength(1)
+    expect(container.querySelector('.planner-toolbar')).toBeNull()
+    expect(container.querySelector('.planner-periods')).toBeNull()
+    expect(screen.queryByText('Planner cycle summary')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Print' }).closest('.report-header')).toBeTruthy()
+    expect(within(screen.getByRole('article', { name: 'End of month' })).getByText('€342.89')).toBeTruthy()
+    expect(within(screen.getByRole('article', { name: 'End of year' })).getByText('€15.49')).toBeTruthy()
+    for (let week = 0; week < 5; week++) await user.click(screen.getByRole('button', { name: 'Next planner week' }))
+    expect(container.querySelector('.planning-day[data-date="2026-09-03"]')).toBeTruthy()
+    expect(within(screen.getByRole('article', { name: 'End of month' })).getByText('€15.49')).toBeTruthy()
   }, 20_000)
 
   it('carries the August closing into September opening on the real Planner screen', async () => {
@@ -579,11 +624,10 @@ describe('HomeCoin app shell', () => {
     await screen.findByRole('heading', { name: /^Good / })
     await user.click(screen.getAllByRole('button', { name: /^Planner$/ })[0])
 
-    const augustSummary = await waitFor(() => container.querySelector('.monthly-grand-summary')!)
-    expect(within(augustSummary as HTMLElement).getAllByText('€96.05')).toHaveLength(2)
-    expect(within(augustSummary as HTMLElement).queryByText('€456.51')).toBeNull()
+    expect(within(screen.getByRole('article', { name: 'End of month' })).getByText('€96.05')).toBeTruthy()
+    expect(within(screen.getByRole('article', { name: 'End of year' })).getByText('€456.51')).toBeTruthy()
 
-    await user.click(screen.getByRole('button', { name: 'Next →' }))
+    for (let week = 0; week < 5; week++) await user.click(screen.getByRole('button', { name: 'Next planner week' }))
     const septemberWeek = await waitFor(() => container.querySelector('.planning-week')!)
     expect(septemberWeek.querySelector('.planning-week-heading span')?.textContent).toBe('€96.05 opening → €456.51 closing')
     expect(septemberWeek.textContent).toContain('€456.51')

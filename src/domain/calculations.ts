@@ -10,10 +10,13 @@ import {
   isSameDay,
   parseISO,
   startOfMonth,
+  startOfYear,
   startOfWeek,
   subMonths,
   subWeeks,
 } from 'date-fns'
+import { buildVisibleItems } from './home'
+import { currentSpendableBalance } from './cashflow'
 import type {
   AppState,
   Budget,
@@ -86,16 +89,20 @@ const accountEffect = (transaction: Transaction, accountId: string) => {
 }
 
 const sum = (values: number[]) => values.reduce((total, value) => total + value, 0)
+const expenseForCategory = (transaction: Transaction, categoryId: string) => {
+  const splitAmount = sum(transaction.splits.filter((split) => split.categoryId === categoryId).map((split) => split.amountCents))
+  const remainder = Math.max(0, transaction.amountCents - sum(transaction.splits.map((split) => split.amountCents)))
+  return splitAmount + (transaction.categoryId === categoryId ? remainder : 0)
+}
 
 const filterTransactions = (
   state: AppState,
   filters: DashboardFilters,
-  includeFuture = false,
 ) => {
   const periodStart =
     filters.startDate ??
     (filters.period === 'year'
-      ? toIsoDate(startOfMonth(subMonths(localDate(state.household.createdAt), 12)))
+      ? toIsoDate(startOfYear(new Date()))
       : filters.period === 'quarter'
         ? toIsoDate(startOfMonth(subMonths(new Date(), 3)))
         : filters.period === 'custom'
@@ -122,9 +129,7 @@ const filterTransactions = (
 
     const date = localDate(transaction.transactionDate)
     if (isBefore(date, start) || isAfter(date, end)) {
-      if (!includeFuture) {
-        return false
-      }
+      return false
     }
 
     if (filters.accountId && transaction.accountId !== filters.accountId && transaction.counterpartyAccountId !== filters.accountId) {
@@ -152,9 +157,6 @@ const filterTransactions = (
 
 const categoryName = (state: AppState, categoryId: string) =>
   state.categories.find((category) => category.id === categoryId)?.name ?? 'Sem categoria'
-
-const isRecurringTransaction = (transaction: Transaction) =>
-  transaction.tags.includes('recorrente') || Boolean(transaction.recurrenceRuleId)
 
 export function recalculateAccountBalances(state: AppState): AppState {
   const accounts = state.accounts.map((account) => ({
@@ -300,61 +302,31 @@ function buildBalanceSeries(state: AppState, referenceDate: Date): Array<{ date:
 }
 
 function forecastRecurringFlows(state: AppState, fromDate: Date, toDate: Date) {
-  const results: Array<{
-    date: Date
-    incomeCents: number
-    expenseCents: number
-    note?: string
-  }> = []
-
+  const items = buildVisibleItems(state, toIsoDate(fromDate), toIsoDate(toDate), fromDate)
+    .filter((item) => item.status !== 'completed')
+  const results = []
   for (let current = fromDate; !isAfter(current, toDate); current = addDays(current, 1)) {
-    let incomeCents = 0
-    let expenseCents = 0
-    const isoDate = toIsoDate(current)
-
-    for (const rule of state.recurringRules.filter((entry) => entry.active)) {
-      if (rule.endDate && isAfter(localDate(current.toISOString().slice(0, 10)), localDate(rule.endDate))) {
-        continue
-      }
-
-      const due = localDate(rule.nextDueDate)
-      if (!isSameDay(due, current)) {
-        continue
-      }
-
-      if (rule.amountCents > 0) {
-        if (['Income', 'Receitas'].includes(state.categories.find((category) => category.id === rule.categoryId)?.group ?? '')) {
-          incomeCents += rule.amountCents
-        } else {
-          expenseCents += rule.amountCents
-        }
-      }
-    }
-
+    const dayItems = items.filter((item) => item.date === toIsoDate(current))
     results.push({
       date: current,
-      incomeCents,
-      expenseCents,
-      note: incomeCents || expenseCents ? `Recurring items on ${isoDate}` : undefined,
+      incomeCents: sum(dayItems.filter((item) => item.kind === 'income').map((item) => item.amountCents)),
+      expenseCents: sum(dayItems.filter((item) => item.kind === 'bill').map((item) => item.amountCents)),
+      recurringIncomeCents: sum(dayItems.filter((item) => item.sourceKind === 'recurring' && item.kind === 'income').map((item) => item.amountCents)),
+      recurringExpenseCents: sum(dayItems.filter((item) => item.sourceKind === 'recurring' && item.kind === 'bill').map((item) => item.amountCents)),
     })
   }
-
   return results
 }
 
 export function calculateForecast(state: AppState, referenceDate = new Date(), horizonDays = 30) {
-  const currentBalance = sum(state.accounts.map((account) => account.currentBalanceCents))
+  const currentBalance = currentSpendableBalance(state)
   const history = state.transactions
     .filter((transaction) => activeTransaction(transaction))
     .filter((transaction) => isBefore(localDate(transaction.transactionDate), referenceDate) || isSameDay(localDate(transaction.transactionDate), referenceDate))
 
-  const variableExpenses = history
-    .filter((transaction) => transaction.type === 'expense' && !isRecurringTransaction(transaction))
-    .map((transaction) => transaction.amountCents)
-
-  const averageDailyExpense = variableExpenses.length
-    ? Math.round(sum(variableExpenses) / Math.max(1, differenceInCalendarDays(referenceDate, startOfMonth(referenceDate)) + 1))
-    : 0
+  // Scheduled forecasts must reconcile with the Planner. Do not add an
+  // implicit average expense on top of the bills already listed in the plan.
+  const averageDailyExpense = 0
 
   const recurringFlows = forecastRecurringFlows(state, referenceDate, addDays(referenceDate, horizonDays - 1))
   const projection: ForecastDay[] = []
@@ -365,8 +337,8 @@ export function calculateForecast(state: AppState, referenceDate = new Date(), h
     const isoDate = toIsoDate(date)
     const dayFlow = recurringFlows.find((item) => isSameDay(item.date, date))
     const incomeCents = dayFlow?.incomeCents ?? 0
-    const recurringExpenseCents = dayFlow?.expenseCents ?? 0
-    const expenseCents = recurringExpenseCents + averageDailyExpense
+    const recurringExpenseCents = dayFlow?.recurringExpenseCents ?? 0
+    const expenseCents = dayFlow?.expenseCents ?? 0
 
     runningBalance += incomeCents - expenseCents
 
@@ -375,7 +347,7 @@ export function calculateForecast(state: AppState, referenceDate = new Date(), h
       projectedBalanceCents: runningBalance,
       incomeCents,
       expenseCents,
-      recurringIncomeCents: incomeCents,
+      recurringIncomeCents: dayFlow?.recurringIncomeCents ?? 0,
       recurringExpenseCents,
       note:
         runningBalance < 0
@@ -394,8 +366,7 @@ export function calculateForecast(state: AppState, referenceDate = new Date(), h
     recurringFlows,
     projection,
     confidence,
-    method:
-      'Projeção conservadora baseada em saldo atual, despesas variáveis médias e recorrências futuras confirmadas.',
+    method: 'Projection from the current available balance and scheduled unpaid income and bills; excludes unrecorded spending.',
     averageDailyExpense,
   }
 }
@@ -405,7 +376,7 @@ export function calculateDashboardSummary(
   filters: DashboardFilters = { period: 'month', status: 'all' },
 ): DashboardSummary {
   const currentDate = new Date()
-  const filtered = filterTransactions(state, filters, true)
+  const filtered = filterTransactions(state, filters)
   const totals = monthTotals(state, currentDate)
   const consolidatedBalanceCents = sum(state.accounts.map((account) => account.currentBalanceCents))
 
@@ -443,9 +414,11 @@ export function calculateDashboardSummary(
       continue
     }
 
-    categoryTotals.set(
+    const splitTotal = sum(transaction.splits.map((split) => split.amountCents))
+    const unsplitAmount = Math.max(0, transaction.amountCents - splitTotal)
+    if (unsplitAmount > 0) categoryTotals.set(
       transaction.categoryId,
-      (categoryTotals.get(transaction.categoryId) ?? 0) + transaction.amountCents,
+      (categoryTotals.get(transaction.categoryId) ?? 0) + unsplitAmount,
     )
 
     for (const split of transaction.splits) {
@@ -539,8 +512,7 @@ export function calculateBudgetSummary(state: AppState) {
           : budget.scope === 'category' && budget.categoryId
             ? totals.monthlyTransactions
                 .filter((transaction) => transaction.type === 'expense' && transactionCompleted(transaction))
-                .filter((transaction) => transaction.categoryId === budget.categoryId)
-                .map((transaction) => transaction.amountCents)
+                .map((transaction) => expenseForCategory(transaction, budget.categoryId!))
                 .reduce((total, value) => total + value, 0)
             : budget.scope === 'person' && budget.personId
               ? totals.monthlyTransactions

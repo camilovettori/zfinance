@@ -2,6 +2,7 @@ import { addDays, addMonths, endOfMonth, endOfWeek, isAfter, startOfMonth, start
 import { buildVisibleItems, type SimpleItem } from './home'
 import type { AppState } from './model'
 import { fromIsoDate, toIsoDate } from '@/lib/date'
+import { currentSpendableBalance } from './cashflow'
 
 export type PlanningDay = {
   date: string
@@ -57,6 +58,20 @@ export type PlannerCycleSummary = {
 
 const sum = (values: number[]) => values.reduce((total, value) => total + value, 0)
 
+// Planner rows replay scheduled items, including overdue items. Reconstruct the
+// plan's opening from the confirmed balance using the SAME rows, so old unpaid
+// bills are not deducted again after the bank balance has been reconciled.
+export function buildPlannerOpeningBalance(state: AppState, startIso: string, referenceDate = new Date()) {
+  const today = toIsoDate(referenceDate)
+  const current = currentSpendableBalance(state)
+  const items = buildVisibleItems(state, startIso < today ? startIso : today, startIso > today ? startIso : today, referenceDate)
+  const flow = (item: SimpleItem) => item.kind === 'income' ? item.amountCents : -item.amountCents
+  if (startIso <= today) return current - sum(items
+    .filter((item) => item.date < today || item.status === 'completed')
+    .map(flow))
+  return current + sum(items.filter((item) => item.date < startIso && item.status !== 'completed').map(flow))
+}
+
 export function expandPlanningRange(state: AppState, startIso: string, endIso: string): PlanningRange {
   const weekStartsOn = state.settings.weekStartDay as 0 | 1 | 2 | 3 | 4 | 5 | 6
   return {
@@ -88,6 +103,14 @@ export function movePlannerCycle(state: AppState, current: PlannerCycle, directi
     ? { start: dayAfter(current.plannerRange.end), end: expandedRange.end }
     : { start: expandedRange.start, end: dayBefore(current.plannerRange.start) }
   return { reportRange, plannerRange, nextPlannerStart: dayAfter(plannerRange.end) }
+}
+
+export function plannerCycleContainingDate(state: AppState, anchor: PlannerCycle, date: string): PlannerCycle {
+  let cycle = anchor
+  while (date < cycle.plannerRange.start || date > cycle.plannerRange.end) {
+    cycle = movePlannerCycle(state, cycle, date < cycle.plannerRange.start ? -1 : 1)
+  }
+  return cycle
 }
 
 export function buildPlannerPeriodMetrics(
@@ -174,7 +197,8 @@ export function buildPlanningWeeks(
     })
   }
 
-  const activeDayCounts = weeks.map((week) => week.days.filter((day) => day.inPeriod).length)
+  const referenceIso = toIsoDate(referenceDate)
+  const activeDayCounts = weeks.map((week) => week.days.filter((day) => day.inPeriod && day.date >= referenceIso).length)
   const activeDays = sum(activeDayCounts)
   let allocatedSavings = 0
   let carriedBalance = openingBalanceCents
@@ -267,7 +291,8 @@ export function savingsContributedInRange(state: AppState, startIso: string, end
     .filter((transaction) => ['paid', 'received'].includes(transaction.status))
     .filter((transaction) =>
       transaction.type === 'transfer' &&
-      (Boolean(transaction.counterpartyAccountId && savingsAccountIds.has(transaction.counterpartyAccountId)) || transaction.tags.includes('savings')),
+      Boolean(transaction.counterpartyAccountId && savingsAccountIds.has(transaction.counterpartyAccountId))
+      && !savingsAccountIds.has(transaction.accountId),
     )
     .reduce((total, transaction) => total + transaction.amountCents, 0)
 }

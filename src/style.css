@@ -165,6 +165,13 @@ textarea {
 .sidebar-footer span { display: block; margin-top: 5px; color: var(--muted); font-size: 0.72rem; }
 
 .app-content { grid-column: 2; min-width: 0; }
+.app-shell.sidebar-collapsed { grid-template-columns: minmax(0, 1fr); }
+.sidebar-collapsed .app-content { grid-column: 1; }
+.topbar-heading { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.sidebar-toggle { position: absolute; top: 82px; right: -14px; z-index: 46; display: grid; place-items: center; width: 28px; height: 36px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-soft); color: var(--accent-strong); box-shadow: 0 3px 10px rgba(47, 125, 91, 0.1); cursor: pointer; transition: background 150ms ease, border-color 150ms ease; }
+.sidebar-toggle-reopen { position: fixed; left: 0; right: auto; border-left: 0; border-radius: 0 10px 10px 0; }
+.sidebar-toggle:hover { background: var(--accent-soft); border-color: var(--accent); }
+.sidebar-toggle:focus-visible, .planner-week-navigation button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
 .app-topbar {
   position: sticky;
@@ -791,6 +798,86 @@ textarea {
 .report-saving-strip strong { color: var(--accent-strong); font-size: 1.15rem; font-variant-numeric: tabular-nums; }
 .report-planner-note { border-bottom: 1px solid var(--border); background: #f7f3ec; color: #6b7373; margin: 0; padding: 10px 22px; font-size: 0.72rem; font-style: italic; }
 .planning-week-list { display: grid; gap: 0; }
+.planner-view-tabs { display: flex; align-items: center; gap: 3px; padding: 4px; border: 1px solid var(--border); border-radius: 13px; background: color-mix(in srgb, var(--accent-soft) 35%, var(--bg)); }
+.planner-view-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-width: 87px; padding: 9px 13px; border: 0; border-radius: 9px; color: var(--muted); background: transparent; font-size: 0.8rem; font-weight: 750; cursor: pointer; transition: background 150ms ease, color 150ms ease, box-shadow 150ms ease; }
+.planner-view-tabs button:hover { color: var(--accent-strong); }
+.planner-view-tabs button[aria-selected='true'] { color: var(--accent-strong); background: var(--bg-soft); box-shadow: 0 2px 5px rgba(35, 67, 51, 0.1); }
+.planner-view-tabs button:focus-visible, .planner-month-day:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.planner-month { padding: 18px 22px; }
+.planner-month-weekdays, .planner-month-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.planner-month-weekdays span { padding: 8px; text-align: center; color: var(--muted); font-size: 0.72rem; font-weight: 800; text-transform: uppercase; }
+.planner-month-grid { gap: 1px; border: 1px solid var(--border); border-radius: 14px; overflow: hidden; background: var(--border); }
+.planner-month-day { display: flex; flex-direction: column; align-items: stretch; gap: 7px; min-width: 0; min-height: 145px; padding: 11px; border: 0; background: var(--bg-soft); color: var(--text); text-align: left; cursor: pointer; transition: background 150ms ease; }
+.planner-month-day:hover { background: var(--accent-soft); }
+.planner-month-day[data-outside='true'] { opacity: 0.55; background: var(--bg); }
+.planner-month-day[data-selected='true'] { box-shadow: inset 0 0 0 2px var(--accent); }
+.planner-month-day-number { display: grid; place-items: center; align-self: flex-start; width: 29px; height: 29px; border-radius: 50%; font-size: 0.85rem; font-weight: 800; }
+.planner-month-day[data-today='true'] .planner-month-day-number { background: var(--accent); color: white; }
+.planner-month-amounts { display: grid; gap: 3px; font-size: 0.72rem; font-variant-numeric: tabular-nums; }
+.planner-month-items { display: grid; gap: 3px; font-size: 0.64rem; color: var(--muted); }
+.planner-month-items > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.planner-month-count { margin-top: auto; font-size: 0.63rem; color: var(--muted); }
+.planner-month-empty { color: var(--border); }
+.planner-month-hint { margin: 12px 0 0; font-size: 0.75rem; color: var(--muted); text-align: center; }
+.planning-day[data-selected='true'] { box-shadow: inset 0 0 0 2px var(--accent); position: relative; scroll-margin-top: 90px; }
+.planning-day[data-selected='true'] > header { background: var(--accent-soft); }
+.mobile-week-day[data-selected='true'] { box-shadow: inset 0 0 0 2px var(--accent); border-radius: 12px; scroll-margin-top: 90px; }
+@media (max-width: 639px) {
+  .planner-month { padding: 10px; }
+  .planner-month-day { padding: 5px; gap: 4px; min-height: 86px; }
+  .planner-month-items, .planner-month-amounts { display: none; }
+  .planner-month-day-number { width: 26px; height: 26px; font-size: 0.75rem; }
+  .planner-month-count { font-size: 0.58rem; }
+  .planner-month-count::before { content: ''; display: inline-block; width: 5px; height: 5px; margin-right: 3px; border-radius: 50%; background: var(--accent); }
+  .planner-month-weekdays span { font-size: 0.62rem; padding: 6px 0; }
+}
+.planner-interactive .planner-header { align-items: center; padding: 24px 26px; gap: 20px; background: linear-gradient(110deg, color-mix(in srgb, var(--accent-soft) 40%, var(--bg-soft)), var(--bg-soft) 65%); }
+.planner-header-title { display: flex; align-items: center; gap: 14px; }
+.planner-header-icon { display: grid; place-items: center; width: 54px; height: 54px; flex-shrink: 0; border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border)); border-radius: 17px; background: var(--accent-soft); color: var(--accent-strong); }
+.planner-header .eyebrow { margin: 0 0 3px; color: var(--accent-strong); font-size: 0.62rem; letter-spacing: 0.18em; }
+.planner-interactive .planner-header h1 { margin: 0; color: var(--text); font-size: 1.65rem; font-weight: 700; letter-spacing: -0.04em; line-height: 1.15; }
+.planner-header-actions { display: flex; align-items: center; gap: 14px; margin-left: auto; }
+.planner-header .planner-print-button { padding: 11px 15px; border-radius: 12px; font-size: 0.8rem; }
+@media (max-width: 639px) {
+  .planner-interactive .planner-header { flex-wrap: wrap; gap: 16px; padding: 20px 18px; }
+  .planner-header-icon { width: 46px; height: 46px; border-radius: 14px; }
+  .planner-header-title { gap: 11px; }
+  .planner-interactive .planner-header h1 { font-size: 1.5rem; }
+  .planner-header-actions.has-view-tabs { width: 100%; justify-content: space-between; }
+}
+.planner-forecast-summary { padding: 22px; border-top: 1px solid var(--border); background: var(--bg-soft); }
+.planner-forecast-title h3 { margin: 0 0 6px; font-size: 1.1rem; color: var(--text); }
+.planner-forecast-title p { margin: 0 0 18px; font-size: 0.78rem; line-height: 1.5; color: var(--muted); }
+.planner-forecast-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.planner-forecast-cards article { display: grid; gap: 10px; padding: 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg); }
+.planner-forecast-cards article > span { display: flex; align-items: center; gap: 8px; font-size: 0.78rem; font-weight: 700; color: var(--muted); }
+.planner-forecast-cards strong { font-size: clamp(1.15rem, 2vw, 1.7rem); font-variant-numeric: tabular-nums; }
+.planner-forecast-cards small { color: var(--muted); font-size: 0.73rem; }
+@media (max-width: 639px) { .planner-forecast-cards { grid-template-columns: 1fr; } }
+.planner-week-navigation { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 18px 22px; border-bottom: 1px solid var(--border); background: linear-gradient(100deg, var(--bg-soft), var(--accent-soft)); }
+.planner-week-arrow { display: grid; place-items: center; flex-shrink: 0; width: 46px; height: 46px; border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border)); border-radius: 50%; background: var(--bg-soft); color: var(--accent-strong); box-shadow: 0 3px 9px rgba(47, 125, 91, 0.06); cursor: pointer; transition: background 150ms ease, color 150ms ease, transform 150ms ease; }
+.planner-week-arrow:hover { background: var(--accent); color: white; transform: translateY(-2px); }
+.planner-week-selection { display: grid; justify-items: center; gap: 4px; min-width: 170px; }
+.planner-week-selection > span { display: flex; align-items: center; gap: 6px; color: var(--accent-strong); font-size: 0.72rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.planner-week-selection > strong { color: var(--text); font-size: 1.1rem; font-weight: 750; }
+.planner-week-today { border: 1px solid var(--border); border-radius: 99px; background: var(--bg-soft); color: var(--accent-strong); padding: 9px 15px; font-size: 0.78rem; font-weight: 750; cursor: pointer; }
+.planner-week-today:hover { border-color: var(--accent); background: var(--accent-soft); }
+@media (min-width: 1024px) {
+  .planner-interactive .planning-week-heading, .planner-interactive .planning-day-grid, .planner-interactive .planning-week-totals { min-width: 0; }
+  .planner-interactive .planning-day-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .planner-interactive .planning-day { min-width: 0; }
+  .planner-interactive .planning-day > header { flex-wrap: wrap; }
+  .planner-interactive .planner-item-main { overflow-wrap: anywhere; }
+  .planner-interactive .planning-week-heading > span { text-align: right; }
+  .planner-interactive .planning-day > footer span { flex-wrap: wrap; }
+}
+@media (max-width: 639px) {
+  .planner-week-navigation { gap: 10px; padding: 14px 10px; flex-wrap: wrap; }
+  .planner-week-arrow { width: 42px; height: 42px; }
+  .planner-week-selection { min-width: 145px; }
+  .planner-week-selection > strong { font-size: 0.95rem; }
+  .planner-week-today { padding: 8px 12px; }
+}
 .planning-week { overflow-x: auto; border-bottom: 1px solid var(--border); padding: 22px; break-inside: avoid; }
 .planning-week-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; min-width: 980px; margin-bottom: 12px; }
 .planning-week-heading small { color: var(--accent-strong); font-size: 0.68rem; font-weight: 850; letter-spacing: 0.12em; text-transform: uppercase; }

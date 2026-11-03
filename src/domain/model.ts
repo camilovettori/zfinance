@@ -59,6 +59,7 @@ export interface FinancialAccount {
   currency: CurrencyCode
   openingBalanceCents: number
   currentBalanceCents: number
+  balanceCorrectionId?: string
   holder: string
   accentColor: string
   archived: boolean

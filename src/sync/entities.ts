@@ -29,6 +29,7 @@ const memberSchema = z.object({
 const accountSchema = z.object({
   id, householdId: id, name: z.string().min(1), institution: z.string(), type: z.string(), currency: z.string(),
   openingBalanceCents: cents, currentBalanceCents: cents, holder: z.string(), accentColor: z.string(), archived: z.boolean(), notes: z.string(),
+  balanceCorrectionId: z.string().optional(),
 })
 
 const categorySchema = z.object({
@@ -51,6 +52,7 @@ const recurringRuleSchema = z.object({
   frequency: z.enum(['weekly', 'fortnightly', 'monthly', 'bimonthly', 'quarterly', 'semiannual', 'yearly', 'custom']),
   interval: z.number().int().positive(), nextDueDate: financialDate, accountId: z.string(), categoryId: z.string(), personId: z.string().optional(),
   generateAutomatically: z.boolean(), reminder: z.boolean(), endDate: financialDate.optional(), active: z.boolean(), notes: z.string().optional(),
+  adjustToPrevFriday: z.boolean().optional(),
 })
 
 const settingsSchema = z.object({

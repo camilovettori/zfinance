@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useRef, useState } from 'react'
+import { useDialogAccessibility } from '@/lib/use-dialog-accessibility'
 import { CalendarRange, ChartNoAxesCombined, Menu, Plus, ReceiptText } from 'lucide-react'
 import { SECTION_ITEMS, type SectionKey } from './sections'
 
@@ -22,12 +23,8 @@ type Props = {
 
 export function MobileBottomNavigation({ activeSection, onNavigate, onAdd }: Props) {
   const [moreOpen, setMoreOpen] = useState(false)
-  useEffect(() => {
-    if (!moreOpen) return
-    const close = (event: KeyboardEvent) => event.key === 'Escape' && setMoreOpen(false)
-    window.addEventListener('keydown', close)
-    return () => window.removeEventListener('keydown', close)
-  }, [moreOpen])
+  const moreRef = useRef<HTMLElement>(null)
+  useDialogAccessibility(moreRef, () => setMoreOpen(false), moreOpen)
 
   const navigate = (section: SectionKey) => {
     onNavigate(section)
@@ -66,7 +63,7 @@ export function MobileBottomNavigation({ activeSection, onNavigate, onAdd }: Pro
     </nav>
 
     {moreOpen ? <div className="mobile-more-backdrop print-hide" role="presentation" onMouseDown={() => setMoreOpen(false)}>
-      <section className="mobile-more-sheet" role="dialog" aria-modal="true" aria-label="More sections" onMouseDown={(event) => event.stopPropagation()}>
+      <section ref={moreRef} tabIndex={-1} className="mobile-more-sheet" role="dialog" aria-modal="true" aria-label="More sections" onMouseDown={(event) => event.stopPropagation()}>
         <header><div><small>HomeCoin</small><h2>More</h2></div><button onClick={() => setMoreOpen(false)} aria-label="Close more sections">Close</button></header>
         <div>{SECTION_ITEMS.filter((item) => moreKeys.includes(item.key)).map((item) => {
           const Icon = item.icon

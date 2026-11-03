@@ -8,19 +8,24 @@
 
 ## Navigation
 
-The phone/tablet bottom bar contains Home, Planner, Bills, Reports, and More. More exposes This Week, This Month, Recurring, Savings, and Settings. It uses `env(safe-area-inset-bottom)`, `aria-current`, visible focus and 44px minimum controls.
+The phone/tablet bottom bar contains Home, Planner, a central Add button, Bills, and More. More exposes This Week, This Month, Recurring, Reports, Savings, and Settings. It uses `env(safe-area-inset-bottom)`, `aria-current`, visible focus and touch-sized controls. The header Add button opens the same amount-first sheet.
 
 ## Planner
 
-- **Week**: primary phone view, consecutive-week navigation, opening/income/bills/closing and seven vertical day cards.
-- **Day**: totals, running balance, item actions, Add income, Add bill and Move to date.
-- **Month overview**: compact daily totals, item count and negative-balance indicator; long names are omitted.
+- **Week**: consecutive-week navigation, a readable opening/closing summary, income/bills totals and compact day cards. Today and the selected day are highlighted.
+- **Day**: date strip, totals, running balance, Add income, Add bill and Move to date. Paid/Received can be recorded directly, with saving feedback, error handling and the existing Undo toast.
+- **Month**: a full calendar with month arrows, today/selection indicators, item counts and separate income/bill dots. Selecting a date opens its containing week, highlights the day and scrolls it into view, including weeks spanning two months or years.
+- **Dashboard**: tapping a day in the seven-day chart opens that exact date in the Planner.
 
-The desktop Planner is untouched and keeps drag/drop. Mobile does not depend on drag: Move to date opens the existing date/scope confirmation and preserves Undo, overrides, tombstones and completed history.
+Mobile does not depend on drag: Move to date opens the existing date/scope confirmation and preserves Undo, overrides, tombstones and completed history.
 
 ## Forms and accessibility
 
-Dialogs become bottom sheets on phones, use viewport-limited internal scrolling, 16px inputs and touch-sized controls. Escape remains supported on desktop. Balance/status updates use live regions, navigation is labelled, reduced motion is respected, and no state relies only on colour.
+Dialogs become bottom sheets on phones, use viewport-limited internal scrolling, 16px inputs and touch-sized controls. Quick entry, More, forms and drawers lock background scrolling, contain keyboard focus, support Escape and restore focus when closed. Short screens can scroll the sheet while its primary actions remain reachable. Viewport configuration supports device safe areas and keyboard resizing without disabling zoom.
+
+Quick entry parses integer cents, retains the selected Planner date and passes both to the form. Its close control and disabled zero-amount state are explicit. Balance/status updates use live regions, navigation is labelled and reduced motion is respected.
+
+The forecast uses a full-width current balance and two compact month/year cards on phones. Navigation and forms were checked at 320, 360, 390, 430 and 768px, with short-screen entry, selected-date persistence, direct payment, focus restoration and offline reload covered in browser tests.
 
 ## Responsive screens
 

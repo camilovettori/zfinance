@@ -183,37 +183,39 @@ const stepDate = (date: Date, frequency: RecurrenceFrequency, interval: number) 
 }
 
 /**
- * If a date falls on Saturday (6), Sunday (0), or Monday (1),
+ * If a date falls on Saturday (6) or Sunday (0),
  * shift it back to the previous Friday.
- * Sat → Fri (−1 day), Sun → Fri (−2 days), Mon → Fri (−3 days)
+ * Sat → Fri (−1 day), Sun → Fri (−2 days).
  */
 export const adjustToPreviousFriday = (date: Date): Date => {
   const day = date.getDay() // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat
   if (day === 6) return addDays(date, -1)  // Sat → Fri
   if (day === 0) return addDays(date, -2)  // Sun → Fri
-  if (day === 1) return addDays(date, -3)  // Mon → Fri
   return date
 }
 
 const expandRecurringDates = (rule: RecurringRule, start: Date, end: Date) => {
   const dates: Date[] = []
-  let current = fromIsoDate(rule.nextDueDate)
+  const original = fromIsoDate(rule.nextDueDate)
+  let current = original
   const limit = 365 * 5
   let iterations = 0
 
   while (isBefore(current, start) && iterations < limit) {
-    current = stepDate(current, rule.frequency, rule.interval)
     iterations += 1
+    current = stepDate(original, rule.frequency, rule.interval * iterations)
   }
 
-  while (!isAfter(current, end) && iterations < limit) {
+  const adjustedEnd = rule.adjustToPrevFriday ? addDays(end, 2) : end
+  const nominalEnd = rule.endDate && isBefore(fromIsoDate(rule.endDate), adjustedEnd) ? fromIsoDate(rule.endDate) : adjustedEnd
+  while (!isAfter(current, nominalEnd) && iterations < limit) {
     // Apply business-day adjustment if the rule requests it
     const adjusted = rule.adjustToPrevFriday ? adjustToPreviousFriday(current) : current
-    dates.push(adjusted)
+    if (!isBefore(adjusted, start) && !isAfter(adjusted, end)) dates.push(adjusted)
     // IMPORTANT: step from the ORIGINAL date (current), not the adjusted one,
     // so monthly stepping stays anchored to the original day (e.g. 25th)
-    current = stepDate(current, rule.frequency, rule.interval)
     iterations += 1
+    current = stepDate(original, rule.frequency, rule.interval * iterations)
   }
 
   return dates

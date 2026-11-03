@@ -31,6 +31,8 @@ import {
   House,
   Landmark,
   Move,
+  ChevronLeft,
+  ChevronRight,
   Pencil,
   Plus,
   Printer,
@@ -56,17 +58,19 @@ import {
   type SimpleItem,
 } from '@/domain/home'
 import { ensureCalculatedState } from '@/domain/calculations'
+import { applyRequestedCamiloUpdates } from '@/domain/camilo-plan'
 import { buildRollingBalanceProjection, currentSpendableBalance } from '@/domain/cashflow'
 import { cleanupOneOffRecurringDuplicates, isSamePlannedEntry, isSameRecurringEntry } from '@/domain/deduplication'
 import { buildMonthlyBillsReport, formatMonthlyBillReportDate } from '@/domain/monthly-bills-report'
 import {
   buildPlannerPeriodMetrics,
-  buildPlannerCycleSummary,
+  buildPlannerOpeningBalance,
   buildPlanningWeeks,
   buildPlannerWeeksWithCarry,
   createPlannerCycle,
   expandPlanningRange,
   movePlannerCycle,
+  plannerCycleContainingDate,
   savingsContributedInRange,
   type PlannerCycle,
 } from '@/domain/planning'
@@ -81,6 +85,7 @@ import {
 import { createBlankState, createDemoState } from '@/domain/seed'
 import type { AppState, FinancialGoal, HouseholdMember, RecurrenceFrequency, RecurringRule, ThemeMode, Transaction } from '@/domain/model'
 import { fromIsoDate, todayIso, toIsoDate } from '@/lib/date'
+import { useDialogAccessibility } from '@/lib/use-dialog-accessibility'
 import { AuthService } from '@/auth/auth-service'
 import { loadState, recordBackup, saveState } from '@/services/storage'
 import {
@@ -95,12 +100,16 @@ import {
   type CloudSyncSnapshot,
 } from '@/sync'
 import { MonthlyPlannerSummary, MonthlyPlannerView, PlannerSavingsSummary } from './MonthlyPlanner'
+import { buildCalendarForecast } from '@/domain/calendar-forecast'
+import { PlannerForecastSummary } from './planner/PlannerForecastSummary'
 import { MobileAddSheet } from './dashboard/MobileAddSheet'
 import { MobileDashboard } from './dashboard/MobileDashboard'
 import { DesktopNavigation } from './navigation/DesktopNavigation'
 import { MobileBottomNavigation } from './navigation/MobileBottomNavigation'
 import { SECTION_ITEMS, type SectionKey } from './navigation/sections'
 import { MobilePlannerView } from './planner/MobilePlannerView'
+import { PlannerWeekNavigation } from './planner/PlannerWeekNavigation'
+import { PlannerMonthView } from './planner/PlannerMonthView'
 
 const SharingPanel = lazy(() => import('@/components/sync/SharingPanel').then((module) => ({ default: module.SharingPanel })))
 
@@ -405,9 +414,11 @@ function ModalShell({
   children: React.ReactNode
 }) {
   const titleId = useId()
+  const modalRef = useRef<HTMLDivElement>(null)
+  useDialogAccessibility(modalRef, onClose)
   return (
     <div className="modal-backdrop flex items-center justify-center p-4" onMouseDown={onClose} role="presentation">
-      <div className={`card modal-panel ${className}`} onMouseDown={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby={titleId}>
+      <div ref={modalRef} tabIndex={-1} className={`card modal-panel ${className}`} onMouseDown={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <div className="flex items-start justify-between gap-4 border-b border-[color:var(--border)] px-5 py-4">
           <div>
             <h2 id={titleId} className="text-xl font-bold tracking-tight text-slate-900">{title}</h2>
@@ -435,9 +446,11 @@ function SideDrawer({
   children: React.ReactNode
 }) {
   const titleId = useId()
+  const drawerRef = useRef<HTMLDivElement>(null)
+  useDialogAccessibility(drawerRef, onClose)
   return (
     <div className="modal-backdrop flex justify-end" onMouseDown={onClose} role="presentation">
-      <div className="card drawer-panel h-full" onMouseDown={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby={titleId}>
+      <div ref={drawerRef} tabIndex={-1} className="card drawer-panel h-full" onMouseDown={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <div className="border-b border-[color:var(--border)] px-5 py-4">
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -576,13 +589,28 @@ function App() {
   const [pendingInviteToken, setPendingInviteToken] = useState(() => (
     !isDesktopRuntime() ? new URLSearchParams(window.location.search).get('invite') ?? '' : ''
   ))
-  const [activeSection, setActiveSection] = useState<SectionKey>('dashboard')
+  const [activeSection, setSection] = useState<SectionKey>('dashboard')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [weekReferenceDate, setWeekReferenceDate] = useState(new Date())
   const [calendarMonth, setCalendarMonth] = useState(new Date())
   const [calendarMode, setCalendarMode] = useState<CalendarMode>('month')
   const [plannerMonth, setPlannerMonth] = useState(new Date())
+  const [plannerWeekDate, setPlannerWeekDate] = useState(todayIso)
+  const [plannerView, setPlannerView] = useState<'week' | 'month'>('week')
+  const [plannerViewMonth, setPlannerViewMonth] = useState(new Date())
   const [plannerCycleOverride, setPlannerCycleOverride] = useState<PlannerCycle | null>(null)
   const [plannerSelectedItem, setPlannerSelectedItem] = useState<SimpleItem | null>(null)
+  const setActiveSection = useCallback((section: SectionKey) => {
+    if (section === 'planner') {
+      setPlannerView('week')
+      setPlannerViewMonth(new Date())
+      setPlannerMonth(new Date())
+      setPlannerWeekDate(todayIso())
+      setPlannerCycleOverride(null)
+      setPlannerSelectedItem(null)
+    }
+    setSection(section)
+  }, [])
   const [plannerMove, setPlannerMove] = useState<PlannerMoveState | null>(null)
   const [plannerAmount, setPlannerAmount] = useState<PlannerAmountState | null>(null)
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
@@ -615,16 +643,39 @@ function App() {
   const [newCategoryKind, setNewCategoryKind] = useState<'expense' | 'income'>('expense')
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const stateRef = useRef<AppState | null>(null)
+  const plannerContentRef = useRef<HTMLDivElement>(null)
+  const pendingPlannerFocusRef = useRef(false)
+  const pendingPlanUpdateRef = useRef<{ previous: AppState; next: AppState } | null>(null)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (!mobileLayout) return
+    const preserveSelectedDay = pendingPlannerFocusRef.current
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+    if (preserveSelectedDay) return
+    const frame = requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' }))
+    return () => cancelAnimationFrame(frame)
+  }, [activeSection, mobileLayout])
+
+  useEffect(() => {
+    if (plannerView !== 'week' || !pendingPlannerFocusRef.current) return
+    const selected = plannerContentRef.current?.querySelector<HTMLElement>(`[data-date="${plannerWeekDate}"][data-selected="true"]`)
+    if (!selected) return
+    pendingPlannerFocusRef.current = false
+    selected.scrollIntoView?.({ block: 'start', behavior: 'smooth' })
+    selected.focus({ preventScroll: true })
+  }, [plannerView, plannerWeekDate, mobileLayout])
 
   useEffect(() => {
     void (async () => {
       try {
         const stored = await loadState()
         const cleanup = cleanupOneOffRecurringDuplicates(stored ?? createBlankState())
-        const next = ensureCalculatedState(cleanup.state)
-        if (cleanup.removed.length) {
-          console.info(`[HomeCoin] Removed ${cleanup.removed.length} duplicate one-off ${cleanup.removed.length === 1 ? 'entry' : 'entries'} that matched recurring rules.`)
+        const updatedPlan = applyRequestedCamiloUpdates(cleanup.state)
+        const next = ensureCalculatedState(updatedPlan)
+        if (updatedPlan !== cleanup.state) pendingPlanUpdateRef.current = { previous: cleanup.state, next }
+        if (cleanup.removed.length || updatedPlan !== cleanup.state) {
+          if (cleanup.removed.length) console.info(`[HomeCoin] Removed ${cleanup.removed.length} duplicate one-off ${cleanup.removed.length === 1 ? 'entry' : 'entries'} that matched recurring rules.`)
           await saveState(next)
         }
 
@@ -657,6 +708,17 @@ function App() {
     registerSyncedStateListener((syncedState) => {
       stateRef.current = syncedState
       setState(syncedState)
+      // Apply the same explicit update after a cloud pull so an older remote
+      // weekly rule cannot restore the superseded salary or Thursday week start.
+      const updatedPlan = applyRequestedCamiloUpdates(syncedState)
+      if (updatedPlan !== syncedState) {
+        void saveState(ensureCalculatedState(updatedPlan)).then(async (saved) => {
+          stateRef.current = saved
+          setState(saved)
+          setPlannerCycleOverride(null)
+          await enqueueSyncChanges(syncedState, saved)
+        }).catch((error) => console.error('Failed to save the requested Camilo plan update.', error))
+      }
     })
     return () => registerSyncedStateListener(null)
   }, [])
@@ -688,7 +750,15 @@ function App() {
     }
     const client = getSupabaseClient()
     if (!client) return
-    void restoreActiveSyncRuntime(client).catch((error) => console.error('Failed to restore the active shared household.', error))
+    void restoreActiveSyncRuntime(client).then(async () => {
+      // Startup runs before the coordinator exists. Queue the requested changes
+      // once remote entity versions are available, even if pull skipped our own rows.
+      const pending = pendingPlanUpdateRef.current
+      if (pending && stateRef.current?.household.id === pending.next.household.id) {
+        await enqueueSyncChanges(pending.previous, pending.next)
+        pendingPlanUpdateRef.current = null
+      }
+    }).catch((error) => console.error('Failed to restore the active shared household.', error))
   }, [authSession, loading, pendingInviteToken])
 
   useEffect(() => () => {
@@ -748,7 +818,7 @@ function App() {
     })
   }, [state])
 
-  const openQuickTransaction = useCallback((kind: SimpleKind, title: string) => {
+  const openQuickTransaction = useCallback((kind: SimpleKind, title: string, date = todayIso()) => {
     if (!state) {
       return
     }
@@ -760,7 +830,7 @@ function App() {
       editScope: 'occurrence',
       allowRecurrence: true,
       draft: {
-        ...defaultTransactionDraft(state, kind, todayIso()),
+        ...defaultTransactionDraft(state, kind, date),
         title,
       },
     })
@@ -801,7 +871,7 @@ function App() {
 
     window.addEventListener('keydown', handleShortcut)
     return () => window.removeEventListener('keydown', handleShortcut)
-  }, [openAddTransaction])
+  }, [openAddTransaction, setActiveSection])
 
   useEffect(() => {
     const closeDialogsOnEscape = (event: KeyboardEvent) => {
@@ -1964,7 +2034,7 @@ function App() {
     ? expandPlanningRange(state, reportRange.start, reportRange.end)
     : null
   const plannerOpeningBalance = reportPlanningRange
-    ? buildRollingBalanceProjection(state, reportPlanningRange.start, reportPlanningRange.end, new Date()).openingBalanceCents
+    ? buildPlannerOpeningBalance(state, reportPlanningRange.start)
     : reportOpeningBalance
   const planningWeeks = reportPeriod === 'week' || reportPeriod === 'month'
     ? buildPlanningWeeks(state, reportRange.start, reportRange.end, reportReferenceDate, reportSavingsCashOutflow, plannerOpeningBalance)
@@ -1996,24 +2066,19 @@ function App() {
   const plannerReportStart = toIsoDate(startOfMonth(plannerMonth))
   const plannerReportEnd = toIsoDate(endOfMonth(plannerMonth))
   const plannerCycle = plannerCycleOverride ?? createPlannerCycle(state, plannerReportStart, plannerReportEnd)
-  const plannerActualSavings = savingsContributedInRange(state, plannerCycle.plannerRange.start, plannerCycle.plannerRange.end)
   const plannerAnchorDate = new Date()
   const plannerAnchorReportStart = toIsoDate(startOfMonth(plannerAnchorDate))
   const plannerAnchorReportEnd = toIsoDate(endOfMonth(plannerAnchorDate))
   const plannerAnchorCycle = createPlannerCycle(state, plannerAnchorReportStart, plannerAnchorReportEnd)
-  const plannerAnchorOpeningBalance = buildRollingBalanceProjection(
-    state,
-    plannerAnchorCycle.plannerRange.start,
-    plannerAnchorCycle.plannerRange.end,
-    plannerAnchorDate,
-  ).openingBalanceCents
-  const plannerSavingsForCycle = (cycle: PlannerCycle) => Math.max(plannedMonthlySavings, savingsContributedInRange(state, cycle.plannerRange.start, cycle.plannerRange.end))
+  const plannerAnchorOpeningBalance = buildPlannerOpeningBalance(state, plannerAnchorCycle.plannerRange.start, plannerAnchorDate)
+  const plannerSavingsForCycle = (cycle: PlannerCycle) => cycle.plannerRange.end < toIsoDate(plannerAnchorDate)
+    ? 0 : Math.max(0, plannedMonthlySavings - savingsContributedInRange(state, cycle.plannerRange.start, cycle.plannerRange.end))
   const plannerWeeks = plannerCycle.reportRange.start >= plannerAnchorCycle.reportRange.start
     ? buildPlannerWeeksWithCarry(
       state,
       plannerAnchorCycle,
       plannerCycle,
-      plannerMonth,
+      plannerAnchorDate,
       plannerAnchorOpeningBalance,
       plannerSavingsForCycle,
     )
@@ -2021,14 +2086,17 @@ function App() {
       state,
       plannerCycle.reportRange.start,
       plannerCycle.reportRange.end,
-      plannerMonth,
+      plannerAnchorDate,
       plannerSavingsForCycle(plannerCycle),
-      buildRollingBalanceProjection(state, plannerCycle.plannerRange.start, plannerCycle.plannerRange.end, plannerMonth).openingBalanceCents,
+      buildPlannerOpeningBalance(state, plannerCycle.plannerRange.start, plannerAnchorDate),
       plannerCycle.plannerRange,
     )
-  const plannerCycleSummary = buildPlannerCycleSummary(plannerWeeks)
-  const plannerLabel = new Intl.DateTimeFormat(state.settings.locale, { month: 'long', year: 'numeric' }).format(plannerMonth)
-  const plannerCycleRangeLabel = financialRangeLabel(plannerCycle.plannerRange.start, plannerCycle.plannerRange.end, state.settings.locale)
+  const plannerCalendarForecast = buildCalendarForecast(state, plannerView === 'month' ? plannerViewMonth : fromIsoDate(plannerWeekDate))
+  const plannerMonthCalendar = buildMonthCalendar(state, plannerViewMonth, plannerAnchorDate)
+  const mobileEntryDate = activeSection === 'planner'
+    ? plannerView === 'month' && plannerWeekDate.slice(0, 7) !== toIsoDate(plannerViewMonth).slice(0, 7) ? toIsoDate(startOfMonth(plannerViewMonth)) : plannerWeekDate
+    : todayIso()
+  const selectedPlannerWeek = plannerWeeks.find((week) => plannerWeekDate >= week.start && plannerWeekDate <= week.end) ?? plannerWeeks[0]
   const visiblePrivacy = state.settings.hideSensitiveValues || state.settings.privacyMode
 
   const dashboardWeekRadius = compactDashboard ? 4 : 8
@@ -2176,15 +2244,39 @@ function App() {
   }
 
   const moveInteractivePlannerCycle = (direction: -1 | 1) => {
-    const nextCycle = movePlannerCycle(state, plannerCycle, direction)
-    setPlannerCycleOverride(nextCycle)
-    setPlannerMonth(fromIsoDate(nextCycle.reportRange.start))
+    if (!selectedPlannerWeek) return
+    const nextDate = toIsoDate(addDays(fromIsoDate(selectedPlannerWeek.start), direction * 7))
+    if (nextDate < plannerCycle.plannerRange.start || nextDate > plannerCycle.plannerRange.end) {
+      const nextCycle = movePlannerCycle(state, plannerCycle, direction)
+      setPlannerCycleOverride(nextCycle)
+      setPlannerMonth(fromIsoDate(nextCycle.reportRange.start))
+    }
+    setPlannerWeekDate(nextDate)
     setPlannerSelectedItem(null)
   }
 
   const resetInteractivePlannerCycle = () => {
+    setPlannerViewMonth(new Date())
+    setPlannerWeekDate(todayIso())
     setPlannerMonth(new Date())
     setPlannerCycleOverride(null)
+    setPlannerSelectedItem(null)
+  }
+
+  const showPlannerMonth = () => {
+    if (plannerView === 'month') return
+    setPlannerViewMonth(fromIsoDate(plannerWeekDate))
+    setPlannerView('month')
+    setPlannerSelectedItem(null)
+  }
+  const openPlannerWeekForDay = (date: string) => {
+    pendingPlannerFocusRef.current = true
+    const cycle = plannerCycleContainingDate(state, plannerAnchorCycle, date)
+    setPlannerCycleOverride(cycle)
+    setPlannerMonth(fromIsoDate(cycle.reportRange.start))
+    setPlannerWeekDate(date)
+    setPlannerViewMonth(fromIsoDate(date))
+    setPlannerView('week')
     setPlannerSelectedItem(null)
   }
 
@@ -3085,24 +3177,6 @@ function App() {
 
   const plannerSection = (
     <section className="planner-section grid gap-5">
-      <Card className="planner-toolbar p-5 print-hide">
-        <div className="page-heading">
-          <div><p className="eyebrow">Interactive household planning</p><h1>Planner</h1><p>{plannerLabel}</p></div>
-          <div className="planner-toolbar-actions">
-            <Button variant="secondary" onClick={() => moveInteractivePlannerCycle(-1)}>← Previous</Button>
-            <Button variant="secondary" onClick={resetInteractivePlannerCycle}>Today</Button>
-            <Button variant="secondary" onClick={() => moveInteractivePlannerCycle(1)}>Next →</Button>
-            <Button variant="primary" onClick={() => openAddTransactionForDate(plannerCycle.plannerRange.start)}><Plus size={17} /> Add</Button>
-            <Button variant="secondary" onClick={() => window.print()}><Printer size={17} /> Print</Button>
-          </div>
-        </div>
-        <div className="planner-periods" aria-label="Planner periods">
-          <span><small>Planner cycle</small><strong>{plannerCycleRangeLabel}</strong></span>
-          <span><small>Next cycle starts</small><strong>{formatSimpleDay(plannerCycle.nextPlannerStart, state.settings.locale)}</strong></span>
-        </div>
-        <p className="planner-mode-note">Changes are saved immediately on this computer. Use Undo in the confirmation toast to restore the previous plan.</p>
-      </Card>
-
       {plannerSelectedItem ? <div className="planner-item-popover print-hide" role="dialog" aria-label={`Actions for ${plannerSelectedItem.title}`}>
         <button className="planner-popover-close" onClick={() => setPlannerSelectedItem(null)} aria-label="Close item actions">×</button>
         <small>{plannerSelectedItem.kind === 'income' ? 'Income' : 'Bill'} · {formatSimpleDay(plannerSelectedItem.date, state.settings.locale)}</small>
@@ -3119,35 +3193,51 @@ function App() {
       </div> : null}
 
       <Card className="report-page report-planner planner-interactive overflow-hidden">
-        <div className="report-header p-5 md:p-6">
-          <div><p className="eyebrow">HomeCoin financial cycle</p><h2>{plannerLabel} Planner</h2></div>
-          <span>Drag an item to another day, or click it for actions.</span>
+        <div className="report-header planner-header">
+          <div className="planner-header-title">
+            <span className="planner-header-icon" aria-hidden="true"><CalendarRange size={26} /></span>
+            <div><p className="eyebrow">HomeCoin</p><h1>Planner</h1></div>
+          </div>
+          <div className={`planner-header-actions print-hide${!mobileLayout || plannerView === 'month' ? ' has-view-tabs' : ''}`}>
+            {!mobileLayout || plannerView === 'month' ? <div className="planner-view-tabs" role="tablist" aria-label="Planner view">
+              <button role="tab" aria-selected={plannerView === 'week'} onClick={() => { if (plannerView === 'month') openPlannerWeekForDay(plannerWeekDate.slice(0, 7) === toIsoDate(plannerViewMonth).slice(0, 7) ? plannerWeekDate : toIsoDate(startOfMonth(plannerViewMonth))) }}><CalendarDays size={15} aria-hidden="true" />Week</button>
+              <button role="tab" aria-selected={plannerView === 'month'} onClick={showPlannerMonth}><CalendarRange size={15} aria-hidden="true" />Month</button>
+            </div> : null}
+            <Button className="planner-print-button" variant="secondary" onClick={() => window.print()}><Printer size={16} aria-hidden="true" /> Print</Button>
+          </div>
         </div>
-        <p className="report-planner-note">Adjacent days are shown to complete each week and calculate the balance correctly.</p>
-        {mobileLayout ? <MobilePlannerView
+        {selectedPlannerWeek ? <PlannerWeekNavigation
+          view={plannerView}
+          start={plannerView === 'month' ? toIsoDate(startOfMonth(plannerViewMonth)) : selectedPlannerWeek.start}
+          label={plannerView === 'month' ? new Intl.DateTimeFormat(state.settings.locale, { month: 'long', year: 'numeric' }).format(plannerViewMonth) : selectedPlannerWeek.label}
+          onPrevious={() => plannerView === 'month' ? setPlannerViewMonth((month) => addMonths(startOfMonth(month), -1)) : moveInteractivePlannerCycle(-1)}
+          onNext={() => plannerView === 'month' ? setPlannerViewMonth((month) => addMonths(startOfMonth(month), 1)) : moveInteractivePlannerCycle(1)}
+          onToday={resetInteractivePlannerCycle}
+        /> : null}
+        <div ref={plannerContentRef}>
+        {plannerView === 'month' ? <PlannerMonthView calendar={plannerMonthCalendar} locale={state.settings.locale} money={(value) => money(value, state)} selectedDate={plannerWeekDate} onChooseDay={openPlannerWeekForDay} /> : mobileLayout ? <MobilePlannerView
           weeks={plannerWeeks}
+          weekDate={plannerWeekDate}
+          onChooseDate={setPlannerWeekDate}
+          onMonthView={showPlannerMonth}
           locale={state.settings.locale}
           money={(value) => money(value, state)}
           onSelectItem={setPlannerSelectedItem}
           onMoveToDate={openPlannerMove}
+          onCompleteItem={completeItemFromPlanner}
           onAddDay={openAddTransactionForDate}
         /> : <MonthlyPlannerView
-          weeks={plannerWeeks}
+          weeks={selectedPlannerWeek ? [selectedPlannerWeek] : []}
+          selectedDate={plannerWeekDate}
           locale={state.settings.locale}
           money={(value) => money(value, state)}
-          monthly
           interactive
           onMove={requestPlannerMove}
           onSelect={setPlannerSelectedItem}
           onAddDay={openAddTransactionForDate}
         />}
-        <PlannerSavingsSummary accumulatedCents={savedTotal} actualCents={plannerActualSavings} plannedCents={plannerCycleSummary.savingsAllocationCents} periodLabel="cycle" goals={activeGoals} goalPlan={(value) => value} money={(value) => money(value, state)} />
-        <MonthlyPlannerSummary
-          mode="planner-cycle"
-          cycleLabel={plannerCycleRangeLabel}
-          totals={plannerCycleSummary}
-          money={(value) => money(value, state)}
-        />
+        </div>
+        <PlannerForecastSummary forecast={plannerCalendarForecast} locale={state.settings.locale} money={(value) => money(value, state)} />
         <div className="report-footer">HomeCoin • Interactive financial-cycle planning • {persistenceSyncLabel(cloudSync)}</div>
       </Card>
     </section>
@@ -3374,8 +3464,9 @@ function App() {
   const selectedCalendarDay = selectedDay ? calendarSnapshot.days.find((day) => day.date === selectedDay) ?? null : null
 
   return (
-    <div className="app-shell">
-      {!mobileLayout ? <aside className="app-sidebar print-hide">
+    <div className={`app-shell${sidebarCollapsed && !mobileLayout ? ' sidebar-collapsed' : ''}`}>
+      {!mobileLayout && !sidebarCollapsed ? <aside id="desktop-sidebar" className="app-sidebar print-hide">
+        <button className="sidebar-toggle" aria-label="Hide sidebar" aria-expanded="true" aria-controls="desktop-sidebar" title="Hide menu" onClick={() => setSidebarCollapsed(true)}><ChevronLeft size={18} aria-hidden="true" /></button>
         <div className="brand-mark"><span><House size={22} /></span><div><strong>HomeCoin</strong><small>Household finance</small></div></div>
         <DesktopNavigation activeSection={activeSection} onNavigate={setActiveSection} />
         <div className="sidebar-footer">
@@ -3383,19 +3474,22 @@ function App() {
           <span>{privateSyncLabel(cloudSync)}</span>
         </div>
       </aside> : null}
+      {!mobileLayout && sidebarCollapsed ? <button className="sidebar-toggle sidebar-toggle-reopen print-hide" aria-label="Show sidebar" aria-expanded="false" aria-controls="desktop-sidebar" title="Show menu" onClick={() => setSidebarCollapsed(false)}><ChevronRight size={18} aria-hidden="true" /></button> : null}
 
       <div className="app-content">
         <header className="app-topbar print-hide">
-          <div>
+          <div className="topbar-heading">
+            <div>
             <strong>{SECTION_ITEMS.find((item) => item.key === activeSection)?.label}</strong>
             <span>{state.household.name}</span>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="ghost" onClick={togglePrivacy} aria-label={visiblePrivacy ? 'Show money values' : 'Hide money values'}>
               {visiblePrivacy ? <EyeOff size={18} /> : <Eye size={18} />}{visiblePrivacy ? 'Hidden' : 'Visible'}
             </Button>
             <div className="quick-add-wrap">
-              <Button variant="primary" aria-haspopup="menu" aria-expanded={showQuickAdd} onClick={() => setShowQuickAdd((visible) => !visible)}><Plus size={18} /> Add</Button>
+              <Button variant="primary" aria-label={mobileLayout ? 'Quick add movement' : undefined} aria-haspopup={mobileLayout ? 'dialog' : 'menu'} aria-expanded={mobileLayout ? mobileAddOpen : showQuickAdd} onClick={() => mobileLayout ? setMobileAddOpen(true) : setShowQuickAdd((visible) => !visible)}><Plus size={18} /> Add</Button>
               {showQuickAdd ? <div className="quick-add-menu" role="menu">
                 <button role="menuitem" onClick={() => openQuickTransaction('income', 'Income')}><span className="quick-add-icon income"><CircleDollarSign size={17} /></span><span><strong>Income</strong><small>Salary or money received</small></span></button>
                 <button role="menuitem" onClick={() => openQuickTransaction('bill', 'Expense')}><span className="quick-add-icon expense"><WalletCards size={17} /></span><span><strong>Expense</strong><small>Everyday spending</small></span></button>
@@ -3414,7 +3508,7 @@ function App() {
               onAddIncome={() => openQuickTransaction('income', 'Income')}
               onAddBill={() => openQuickTransaction('bill', 'Expense')}
               onCompleteItem={completeItemFromPlanner}
-              onOpenDay={() => setActiveSection('planner')}
+              onOpenDay={(date) => { setActiveSection('planner'); openPlannerWeekForDay(date) }}
             />
           : dashboardView : null}
         {activeSection === 'planner' ? plannerSection : null}
@@ -3437,11 +3531,11 @@ function App() {
       {mobileLayout && mobileAddOpen ? <MobileAddSheet
         locale={state.settings.locale}
         currency={state.settings.currency}
-        date={todayIso()}
+        date={mobileEntryDate}
         onClose={() => setMobileAddOpen(false)}
         onSubmit={(kind, amountCents) => {
           setMobileAddOpen(false)
-          openQuickTransaction(kind, kind === 'income' ? 'Income' : 'Expense')
+          openQuickTransaction(kind, kind === 'income' ? 'Income' : 'Expense', mobileEntryDate)
           setTransactionModal((current) =>
             current ? { ...current, draft: { ...current.draft, amount: (amountCents / 100).toFixed(2) } } : current,
           )

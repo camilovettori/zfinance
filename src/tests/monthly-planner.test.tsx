@@ -59,7 +59,7 @@ describe('MonthlyPlannerView current week highlight', () => {
     expect(sections[0].getAttribute('data-current-week')).toBe('false')
     expect(sections[1].getAttribute('data-current-week')).toBe('true')
     expect(sections[2].getAttribute('data-current-week')).toBe('false')
-    expect(screen.getByText('● Current week')).toBeTruthy()
+    expect(screen.getByText('● Current week · Week 33')).toBeTruthy()
   })
 
   it('marks the day column matching today as today', () => {

@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { Delete } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Delete, X } from 'lucide-react'
+import { useDialogAccessibility } from '@/lib/use-dialog-accessibility'
 import type { SimpleKind } from '@/domain/home'
 
 type Props = {
@@ -19,8 +20,11 @@ const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'del'] as c
 export function MobileAddSheet({ locale, currency, date, initialKind = 'bill', onClose, onSubmit }: Props) {
   const [kind, setKind] = useState<SimpleKind>(initialKind)
   const [raw, setRaw] = useState('')
+  const sheetRef = useRef<HTMLElement>(null)
+  useDialogAccessibility(sheetRef, onClose)
 
-  const amountCents = Math.round(Number.parseFloat(raw || '0') * 100) || 0
+  const [whole = '', decimal = ''] = raw.split('.')
+  const amountCents = Number(whole || '0') * 100 + Number(decimal.padEnd(2, '0') || '0')
   const display = new Intl.NumberFormat(locale, { style: 'currency', currency, minimumFractionDigits: 2 })
     .format(amountCents / 100)
 
@@ -34,12 +38,15 @@ export function MobileAddSheet({ locale, currency, date, initialKind = 'bill', o
   return <div className="mobile-add-backdrop print-hide" role="presentation" onMouseDown={onClose}>
     <section
       className="mobile-add-sheet"
+      ref={sheetRef}
+      tabIndex={-1}
       role="dialog"
       aria-modal="true"
       aria-label="Add income or bill"
       onMouseDown={(event) => event.stopPropagation()}
     >
       <span className="mobile-sheet-grip" aria-hidden="true" />
+      <header className="mobile-sheet-heading"><div><small>Quick entry</small><h2>Add a movement</h2></div><button onClick={onClose} aria-label="Close quick entry"><X size={20} aria-hidden="true" /></button></header>
       <div className="mobile-add-kind" role="tablist" aria-label="Entry type">
         <button role="tab" aria-selected={kind === 'bill'} onClick={() => setKind('bill')}>Bill</button>
         <button role="tab" aria-selected={kind === 'income'} onClick={() => setKind('income')}>Income</button>

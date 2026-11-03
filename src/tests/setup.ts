@@ -30,3 +30,4 @@ class ResizeObserverMock {
 }
 
 vi.stubGlobal('ResizeObserver', ResizeObserverMock)
+window.scrollTo = vi.fn()

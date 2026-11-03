@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useState, type CSSProperties } from 'react'
+import { getISOWeek } from 'date-fns'
 import {
   DndContext,
   DragOverlay,
@@ -15,7 +16,7 @@ import { GripVertical, Plus } from 'lucide-react'
 import type { SimpleItem } from '@/domain/home'
 import type { FinancialGoal } from '@/domain/model'
 import type { PlannerCycleSummary, PlanningDay, PlanningWeek } from '@/domain/planning'
-import { isIsoBetween, todayIso } from '@/lib/date'
+import { fromIsoDate, isIsoBetween, todayIso } from '@/lib/date'
 
 type MoneyFormatter = (amountCents: number) => string
 
@@ -57,6 +58,7 @@ function PlanningItemCard({ item, money, interactive = false, overlay = false, o
 }
 
 type PlanningDayColumnProps = {
+  selectedDate?: string
   day: PlanningDay
   locale: string
   money: MoneyFormatter
@@ -65,7 +67,7 @@ type PlanningDayColumnProps = {
   onAddDay?: (date: string) => void
 }
 
-function PlanningDayColumn({ day, locale, money, interactive, onSelect, onAddDay }: PlanningDayColumnProps) {
+function PlanningDayColumn({ day, locale, money, interactive, onSelect, onAddDay, selectedDate }: PlanningDayColumnProps) {
   const { isOver, setNodeRef } = useDroppable({ id: `planner-day:${day.date}`, data: { date: day.date }, disabled: !interactive })
   return (
     <article
@@ -74,6 +76,9 @@ function PlanningDayColumn({ day, locale, money, interactive, onSelect, onAddDay
       data-outside={!day.inPeriod}
       data-date={day.date}
       data-today={day.date === todayIso()}
+      data-selected={day.date === selectedDate}
+      aria-label={day.date === selectedDate ? `Selected day ${day.date}` : undefined}
+      tabIndex={day.date === selectedDate ? -1 : undefined}
       onDoubleClick={() => interactive && onAddDay?.(day.date)}
     >
       <header><strong>{new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(new Date(`${day.date}T12:00:00`))}</strong><span>{new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short' }).format(new Date(`${day.date}T12:00:00`))}</span></header>
@@ -89,6 +94,7 @@ function PlanningDayColumn({ day, locale, money, interactive, onSelect, onAddDay
 }
 
 export type MonthlyPlannerViewProps = {
+  selectedDate?: string
   weeks: PlanningWeek[]
   locale: string
   money: MoneyFormatter
@@ -99,7 +105,7 @@ export type MonthlyPlannerViewProps = {
   onAddDay?: (date: string) => void
 }
 
-export function MonthlyPlannerView({ weeks, locale, money, monthly = false, interactive = false, onMove, onSelect, onAddDay }: MonthlyPlannerViewProps) {
+export function MonthlyPlannerView({ weeks, locale, money, monthly = false, interactive = false, onMove, onSelect, onAddDay, selectedDate }: MonthlyPlannerViewProps) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor))
   const [activeItem, setActiveItem] = useState<SimpleItem | null>(null)
   const handleStart = (event: DragStartEvent) => setActiveItem(event.active.data.current?.item as SimpleItem | null)
@@ -109,20 +115,15 @@ export function MonthlyPlannerView({ weeks, locale, money, monthly = false, inte
     setActiveItem(null)
     if (item && date && item.date !== date) onMove?.(item, date)
   }
-  const listRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const currentWeek = listRef.current?.querySelector('[data-current-week="true"]')
-    currentWeek?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
-  }, [weeks])
   const content = (
-    <div className="planning-week-list" ref={listRef}>
+    <div className="planning-week-list">
       {weeks.map((week, weekIndex) => {
         const isCurrentWeek = isIsoBetween(todayIso(), week.start, week.end)
         return (
         <section className="planning-week" key={week.start} data-week-start={week.start} data-current-week={isCurrentWeek}>
-          <div className="planning-week-heading"><div><small>{isCurrentWeek ? '● Current week' : monthly ? `Week ${weekIndex + 1}` : 'Weekly plan'}</small><h3>{week.label}</h3></div><span className={week.closingBalanceCents >= 0 ? 'money-positive' : 'money-negative'}>{money(week.openingBalanceCents)} opening → {money(week.closingBalanceCents)} closing</span></div>
+          <div className="planning-week-heading"><div><small>{isCurrentWeek ? `● Current week · Week ${getISOWeek(fromIsoDate(todayIso()))}` : monthly ? `Week ${weekIndex + 1}` : `Week ${getISOWeek(fromIsoDate(week.start))}`}</small><h3>{week.label}</h3></div><span className={week.closingBalanceCents >= 0 ? 'money-positive' : 'money-negative'}>{money(week.openingBalanceCents)} opening → {money(week.closingBalanceCents)} closing</span></div>
           <div className="planning-day-grid">
-            {week.days.map((day) => <PlanningDayColumn key={day.date} day={day} locale={locale} money={money} interactive={interactive} onSelect={onSelect} onAddDay={onAddDay} />)}
+            {week.days.map((day) => <PlanningDayColumn key={day.date} day={day} locale={locale} money={money} interactive={interactive} onSelect={onSelect} onAddDay={onAddDay} selectedDate={selectedDate} />)}
           </div>
           <div className="planning-week-totals">
             <span><small>Opening balance</small><strong>{money(week.openingBalanceCents)}</strong></span>

@@ -1,9 +1,9 @@
 import { addDays, differenceInCalendarDays, endOfMonth, startOfMonth } from 'date-fns'
-import { buildRollingBalanceProjection, currentSpendableBalance } from '@/domain/cashflow'
+import { currentSpendableBalance } from '@/domain/cashflow'
 import { buildDebtSummary, type DebtSummary } from '@/domain/debt'
 import { buildVisibleItems, type SimpleItem } from '@/domain/home'
 import type { AppState } from '@/domain/model'
-import { buildPlanningWeeks, createPlannerCycle, savingsContributedInRange, type PlanningWeek } from '@/domain/planning'
+import { buildPlannerOpeningBalance, buildPlanningWeeks, createPlannerCycle, savingsContributedInRange, type PlanningWeek } from '@/domain/planning'
 import { fromIsoDate, toIsoDate } from '@/lib/date'
 
 export type MoneyEvent = {
@@ -126,16 +126,8 @@ function buildCurrentPlannerWeek(state: AppState, localToday: Date, referenceDat
   const reportEnd = toIsoDate(endOfMonth(localToday))
   const cycle = createPlannerCycle(state, reportStart, reportEnd)
   const plannedMonthlySavings = sum(state.goals.filter((goal) => !goal.archived).map((goal) => goal.monthlyContributionCents))
-  const savingsForCycle = Math.max(
-    plannedMonthlySavings,
-    savingsContributedInRange(state, cycle.plannerRange.start, cycle.plannerRange.end),
-  )
-  const openingBalanceCents = buildRollingBalanceProjection(
-    state,
-    cycle.plannerRange.start,
-    cycle.plannerRange.end,
-    referenceDate,
-  ).openingBalanceCents
+  const savingsForCycle = Math.max(0, plannedMonthlySavings - savingsContributedInRange(state, cycle.plannerRange.start, cycle.plannerRange.end))
+  const openingBalanceCents = buildPlannerOpeningBalance(state, cycle.plannerRange.start, referenceDate)
   const planningWeeks = buildPlanningWeeks(
     state,
     cycle.reportRange.start,

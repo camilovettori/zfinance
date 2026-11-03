@@ -51,12 +51,12 @@ describe('adjustToPreviousFriday', () => {
     expect(result.getDate()).toBe(23) // Oct 23
   })
 
-  it('shifts Monday back to Friday (-3 days)', () => {
+  it('keeps Monday on the scheduled payday', () => {
     const date = new Date(2027, 0, 25) // Jan 25 2027 = Monday
     expect(date.getDay()).toBe(1) // verify it's Monday
     const result = adjustToPreviousFriday(date)
-    expect(result.getDay()).toBe(5) // Friday
-    expect(result.getDate()).toBe(22) // Jan 22
+    expect(result.getDay()).toBe(1) // Monday
+    expect(result.getDate()).toBe(25) // Jan 25
   })
 })
 
@@ -131,14 +131,14 @@ describe('expandRecurringDates with adjustToPrevFriday', () => {
     // Should have 12 occurrences
     expect(salaryItems.length).toBe(12)
 
-    // Every salary date should fall on Tue-Fri (never Sat/Sun/Mon)
+    // Every salary date should fall on Mon-Fri (never Sat/Sun)
     for (const item of salaryItems) {
       const [year, month, day] = item.date.split('-').map(Number)
       const date = new Date(year, month - 1, day)
       const dayOfWeek = date.getDay()
       expect(
-        dayOfWeek >= 2 && dayOfWeek <= 5,
-        `${item.date} (day ${dayOfWeek}) should be Tue-Fri`,
+        dayOfWeek >= 1 && dayOfWeek <= 5,
+        `${item.date} (day ${dayOfWeek}) should be Mon-Fri`,
       ).toBe(true)
     }
 
@@ -151,8 +151,8 @@ describe('expandRecurringDates with adjustToPrevFriday', () => {
     expect(salaryItems[2].date).toBe('2026-11-25')
     // Dec 25 2026 = Friday → Dec 25
     expect(salaryItems[3].date).toBe('2026-12-25')
-    // Jan 25 2027 = Monday → Jan 22 (Friday)
-    expect(salaryItems[4].date).toBe('2027-01-22')
+    // Jan 25 2027 = Monday: keep the scheduled 25th.
+    expect(salaryItems[4].date).toBe('2027-01-25')
     // Feb 25 2027 = Thursday → Feb 25
     expect(salaryItems[5].date).toBe('2027-02-25')
     // Mar 25 2027 = Thursday → Mar 25
