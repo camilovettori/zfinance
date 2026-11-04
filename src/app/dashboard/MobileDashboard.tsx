@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Check, Plus } from 'lucide-react'
+import { Check } from 'lucide-react'
 import { formatSimpleCurrency, type SimpleItem } from '@/domain/home'
 import type { AppState } from '@/domain/model'
 import { fromIsoDate } from '@/lib/date'
@@ -9,8 +9,6 @@ type Props = {
   state: AppState
   referenceDate?: Date
   onEditItem(item: SimpleItem): void
-  onAddIncome(): void
-  onAddBill(): void
   /** Marks an item paid/received in place. Falls back to onEditItem when absent. */
   onCompleteItem?(item: SimpleItem): void | Promise<void>
   /** Opens the planner on a given day. Absent = day rail is not tappable. */
@@ -24,8 +22,6 @@ export function MobileDashboard({
   state,
   referenceDate = new Date(),
   onEditItem,
-  onAddIncome,
-  onAddBill,
   onCompleteItem,
   onOpenDay,
 }: Props) {
@@ -137,9 +133,5 @@ export function MobileDashboard({
           </p>}
     </article>
 
-    <div className="mobile-dashboard-actions" aria-label="Quick actions">
-      <button onClick={onAddIncome}><Plus size={18} /> Add income</button>
-      <button onClick={onAddBill}><Plus size={18} /> Add bill</button>
-    </div>
   </section>
 }

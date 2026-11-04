@@ -3508,8 +3508,6 @@ function App() {
           ? <MobileDashboard
               state={state}
               onEditItem={openEditTransaction}
-              onAddIncome={() => openQuickTransaction('income', 'Income')}
-              onAddBill={() => openQuickTransaction('bill', 'Expense')}
               onCompleteItem={completeItemFromPlanner}
               onOpenDay={(date) => { setActiveSection('planner'); openPlannerWeekForDay(date) }}
             />

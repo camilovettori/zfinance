@@ -72,7 +72,7 @@ describe('mobile dashboard model', () => {
       id: 'income', title: 'Payday', amountCents: 50_000, type: 'income', categoryId: category.income, transactionDate: '2026-08-13',
     })]
 
-    render(<MobileDashboard state={state} referenceDate={referenceDate} onEditItem={vi.fn()} onAddIncome={vi.fn()} onAddBill={vi.fn()} />)
+    render(<MobileDashboard state={state} referenceDate={referenceDate} onEditItem={vi.fn()} />)
 
     expect(screen.getByText('Available now')).not.toBeNull()
     expect(screen.getByText('After tomorrow')).not.toBeNull()
