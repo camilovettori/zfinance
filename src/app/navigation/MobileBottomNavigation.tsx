@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useDialogAccessibility } from '@/lib/use-dialog-accessibility'
-import { CalendarRange, ChartNoAxesCombined, Menu, Plus } from 'lucide-react'
+import { CalendarRange, ChartNoAxesCombined, Menu, Plus, ScanLine } from 'lucide-react'
 import { SECTION_ITEMS, type SectionKey } from './sections'
 
 const primary: Array<{ key: SectionKey; label: string; icon: typeof CalendarRange }> = [
@@ -16,9 +16,10 @@ type Props = {
   onNavigate: (section: SectionKey) => void
   /** Opens the amount-first add sheet. Absent = centre button is hidden. */
   onAdd?: () => void
+  onScan?: () => void
 }
 
-export function MobileBottomNavigation({ activeSection, onNavigate, onAdd }: Props) {
+export function MobileBottomNavigation({ activeSection, onNavigate, onAdd, onScan }: Props) {
   const [moreOpen, setMoreOpen] = useState(false)
   const moreRef = useRef<HTMLElement>(null)
   useDialogAccessibility(moreRef, () => setMoreOpen(false), moreOpen)
@@ -42,10 +43,13 @@ export function MobileBottomNavigation({ activeSection, onNavigate, onAdd }: Pro
   }
 
   return <>
-    <nav className="mobile-nav print-hide" aria-label="Mobile navigation" data-with-add={Boolean(onAdd)}>
+    <nav className="mobile-nav print-hide" aria-label="Mobile navigation" data-with-add={Boolean(onAdd)} data-with-scan={Boolean(onScan)}>
       {primary.map(tab)}
       {onAdd ? <button className="mobile-nav-add" onClick={() => { setMoreOpen(false); onAdd() }} aria-label="Add income or bill">
         <Plus size={24} strokeWidth={2.6} aria-hidden="true" />
+      </button> : null}
+      {onScan ? <button className="mobile-nav-scan" aria-label="Scan receipt" onClick={() => { setMoreOpen(false); onScan() }}>
+        <span className="mobile-nav-scan-icon"><ScanLine size={21} strokeWidth={1.9} aria-hidden="true" /></span><span>Scan</span>
       </button> : null}
       <button
         data-active={moreKeys.includes(activeSection)}

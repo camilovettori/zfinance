@@ -392,7 +392,8 @@ describe('HomeCoin app shell', () => {
 
     expect(container.querySelector('.app-sidebar')).toBeNull()
     const navigation = screen.getByRole('navigation', { name: 'Mobile navigation' })
-    expect(within(navigation).getAllByRole('button')).toHaveLength(4)
+    expect(within(navigation).getAllByRole('button')).toHaveLength(5)
+    expect(within(navigation).getByRole('button', { name: 'Scan receipt' })).toBeTruthy()
     expect(within(navigation).getByRole('button', { name: 'Planner' })).toBeTruthy()
     expect(within(navigation).queryByRole('button', { name: 'Bills' })).toBeNull()
     expect(within(navigation).getByRole('button', { name: 'Add income or bill' })).toBeTruthy()

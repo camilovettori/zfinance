@@ -28,6 +28,10 @@
 /* ---------- Bottom navigation: 4 tabs + centre Add ---------- */
 .mobile-nav { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .mobile-nav[data-with-add='true'] { grid-template-columns: 1fr 1fr 64px 1fr; align-items: center; }
+.mobile-nav[data-with-add='true'][data-with-scan='true'] { grid-template-columns: 1fr 1fr 64px 1fr 1fr; }
+.mobile-nav .mobile-nav-scan { color: var(--accent); gap: 1px; }
+.mobile-nav-scan-icon { display: grid; place-items: center; width: 30px; height: 27px; border-radius: 8px; background: var(--accent-soft); }
+.mobile-nav-scan:active .mobile-nav-scan-icon { transform: scale(.92); }
 .mobile-nav-add {
   display: grid;
   place-items: center;

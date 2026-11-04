@@ -3488,9 +3488,9 @@ function App() {
           </div>
           <div className="flex items-center gap-2">
             <Button variant="ghost" onClick={togglePrivacy} aria-label={visiblePrivacy ? 'Show money values' : 'Hide money values'}>
-              {visiblePrivacy ? <EyeOff size={18} /> : <Eye size={18} />}{visiblePrivacy ? 'Hidden' : 'Visible'}
+              {visiblePrivacy ? <EyeOff size={18} /> : <Eye size={18} />}{!mobileLayout ? visiblePrivacy ? 'Hidden' : 'Visible' : null}
             </Button>
-            <div className="quick-add-wrap">
+            {!mobileLayout || activeSection !== 'dashboard' ? <div className="quick-add-wrap">
               <Button variant="primary" aria-label={mobileLayout ? 'Quick add movement' : undefined} aria-haspopup={mobileLayout ? 'dialog' : 'menu'} aria-expanded={mobileLayout ? mobileAddOpen : showQuickAdd} onClick={() => mobileLayout ? setMobileAddOpen(true) : setShowQuickAdd((visible) => !visible)}><Plus size={18} /> Add</Button>
               {showQuickAdd ? <div className="quick-add-menu" role="menu">
                 <button role="menuitem" onClick={() => openQuickTransaction('income', 'Income')}><span className="quick-add-icon income"><CircleDollarSign size={17} /></span><span><strong>Income</strong><small>Salary or money received</small></span></button>
@@ -3499,7 +3499,7 @@ function App() {
                 <button role="menuitem" onClick={() => { setShowQuickAdd(false); setReceiptScannerOpen(true) }}><span className="quick-add-icon bill"><ReceiptText size={17} /></span><span><strong>Scan receipt</strong><small>Photo to reviewed expense</small></span></button>
                 <button role="menuitem" onClick={() => { setShowQuickAdd(false); const goal = state.goals.find((entry) => !entry.archived); if (goal) openGoalModal(goal, true); else openGoalModal() }}><span className="quick-add-icon savings"><Target size={17} /></span><span><strong>Savings contribution</strong><small>Add to a household goal</small></span></button>
               </div> : null}
-            </div>
+            </div> : null}
           </div>
         </header>
 
@@ -3529,6 +3529,7 @@ function App() {
         activeSection={activeSection}
         onNavigate={setActiveSection}
         onAdd={() => setMobileAddOpen(true)}
+        onScan={() => setReceiptScannerOpen(true)}
       /> : null}
 
       {mobileLayout && mobileAddOpen ? <MobileAddSheet
