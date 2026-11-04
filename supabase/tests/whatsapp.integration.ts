@@ -26,6 +26,7 @@ grant execute on function extensions.gen_random_bytes(integer) to authenticated,
 const original = await Deno.readTextFile(new URL('../migrations/202608100001_homecoin_schema.sql', import.meta.url))
 await database.exec(original.replace('create extension if not exists pgcrypto with schema extensions;', ''))
 await database.exec(await Deno.readTextFile(new URL('../migrations/20261103211314_whatsapp_integration.sql', import.meta.url)))
+await database.exec(await Deno.readTextFile(new URL('../migrations/20261104190405_receipt_scan_quota.sql', import.meta.url)))
 const household = '10000000-0000-4000-8000-000000000001'
 const user = '10000000-0000-4000-8000-000000000002'
 const stranger = '10000000-0000-4000-8000-000000000003'
@@ -52,9 +53,12 @@ insert into homecoin.whatsapp_contacts(household_id,user_id,member_name,phone_nu
 values('${household}','${user}','Camilo','353870000001','${account}','${category}');
 `)
 assert((await database.query('select * from homecoin.whatsapp_contacts')).rows.length === 1, 'Owner can link own contact')
+for (let scan = 0; scan < 20; scan++) await database.query(`select homecoin.claim_receipt_scan('${household}')`)
+await rejects(`select homecoin.claim_receipt_scan('${household}')`, 'Receipt scans have a persistent hourly limit')
 await rejects("update homecoin.whatsapp_contacts set verified_at=now()", 'Browser cannot forge verification')
 await rejects(`select homecoin.whatsapp_record_expense('${message}','{}','test')`, 'Authenticated client cannot invoke service expense RPC')
 await database.exec(`select set_config('request.jwt.claim.sub','${stranger}',false)`)
+await rejects(`select homecoin.claim_receipt_scan('${household}')`, 'Non-member cannot claim a receipt scan')
 assert((await database.query('select * from homecoin.whatsapp_contacts')).rows.length === 0, 'Other user cannot read contact or verification code')
 await rejects(`insert into homecoin.whatsapp_contacts(household_id,user_id,member_name,phone_number,account_id,category_id) values('${household}','${stranger}','Intruder','353870000002','${account}','${category}')`, 'Non-member cannot link number')
 await database.exec(`reset role; select set_config('request.jwt.claim.sub','',false);

@@ -112,6 +112,7 @@ import { PlannerWeekNavigation } from './planner/PlannerWeekNavigation'
 import { PlannerMonthView } from './planner/PlannerMonthView'
 
 const SharingPanel = lazy(() => import('@/components/sync/SharingPanel').then((module) => ({ default: module.SharingPanel })))
+const ReceiptScanner = lazy(() => import('@/components/ReceiptScanner').then((module) => ({ default: module.ReceiptScanner })))
 const WhatsAppSettings = lazy(() => import('@/components/WhatsAppSettings').then((module) => ({ default: module.WhatsAppSettings })))
 
 type CalendarMode = 'month' | 'list'
@@ -628,6 +629,7 @@ function App() {
   const [toast, setToast] = useState<ToastState | null>(null)
   const [showQuickAdd, setShowQuickAdd] = useState(false)
   const [mobileAddOpen, setMobileAddOpen] = useState(false)
+  const [receiptScannerOpen, setReceiptScannerOpen] = useState(false)
   const [compactDashboard, setCompactDashboard] = useState(false)
   const [mobileLayout, setMobileLayout] = useState(() => window.matchMedia('(max-width: 1023px)').matches)
   const [reportPeriod, setReportPeriod] = useState<ReportPeriod>('week')
@@ -3496,6 +3498,7 @@ function App() {
                 <button role="menuitem" onClick={() => openQuickTransaction('income', 'Income')}><span className="quick-add-icon income"><CircleDollarSign size={17} /></span><span><strong>Income</strong><small>Salary or money received</small></span></button>
                 <button role="menuitem" onClick={() => openQuickTransaction('bill', 'Expense')}><span className="quick-add-icon expense"><WalletCards size={17} /></span><span><strong>Expense</strong><small>Everyday spending</small></span></button>
                 <button role="menuitem" onClick={() => openQuickTransaction('bill', 'Bill')}><span className="quick-add-icon bill"><ReceiptText size={17} /></span><span><strong>Bill</strong><small>Payment with a due date</small></span></button>
+                <button role="menuitem" onClick={() => { setShowQuickAdd(false); setReceiptScannerOpen(true) }}><span className="quick-add-icon bill"><ReceiptText size={17} /></span><span><strong>Scan receipt</strong><small>Photo to reviewed expense</small></span></button>
                 <button role="menuitem" onClick={() => { setShowQuickAdd(false); const goal = state.goals.find((entry) => !entry.archived); if (goal) openGoalModal(goal, true); else openGoalModal() }}><span className="quick-add-icon savings"><Target size={17} /></span><span><strong>Savings contribution</strong><small>Add to a household goal</small></span></button>
               </div> : null}
             </div>
@@ -3531,6 +3534,7 @@ function App() {
       /> : null}
 
       {mobileLayout && mobileAddOpen ? <MobileAddSheet
+        onScanReceipt={() => { setMobileAddOpen(false); setReceiptScannerOpen(true) }}
         locale={state.settings.locale}
         currency={state.settings.currency}
         date={mobileEntryDate}
@@ -3543,6 +3547,11 @@ function App() {
           )
         }}
       /> : null}
+
+      {receiptScannerOpen ? <Suspense fallback={<p role="status">Loading receipt scanner…</p>}><ReceiptScanner state={state} onClose={() => setReceiptScannerOpen(false)} onSave={async (transaction) => {
+        await commit((draft) => ({ ...draft, transactions: [...draft.transactions.filter((entry) => entry.id !== transaction.id), transaction] }))
+        showToast('Receipt expense saved.')
+      }} /></Suspense> : null}
 
       {showReportFilters ? (
         <ModalShell title="Report filters" subtitle="Choose the planning period and report title." onClose={() => setShowReportFilters(false)}>

@@ -135,7 +135,7 @@ test('mobile quick entry keeps the selected date, traps focus, saves cents and c
   for (const key of ['1', '2', '.', '3', '4']) await sheet.getByRole('button', { name: key, exact: true }).click()
   await sheet.getByRole('button', { name: 'Close quick entry' }).focus()
   await page.keyboard.press('Shift+Tab')
-  await expect(sheet.getByRole('button', { name: 'Continue', exact: true })).toBeFocused()
+  await expect(sheet.getByRole('button', { name: 'Scan receipt photo', exact: true })).toBeFocused()
   await page.keyboard.press('Tab')
   await expect(sheet.getByRole('button', { name: 'Close quick entry' })).toBeFocused()
   expect(await page.evaluate(() => document.body.style.overflow)).toBe('hidden')

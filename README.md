@@ -87,6 +87,7 @@ pnpm build
 
 ## Documentation
 
+- [Receipt photo scanner](docs/RECEIPT_SCANNER.md)
 - [WhatsApp assistant: setup and activation](docs/WHATSAPP_SETUP.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Mobile](docs/MOBILE.md)

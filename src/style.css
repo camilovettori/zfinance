@@ -1,4 +1,4 @@
-@import 'tailwindcss';
+﻿@import 'tailwindcss';
 
 :root {
   color-scheme: light;
@@ -1325,3 +1325,13 @@ textarea {
 }
 
 @import './styles/mobile-redesign.css';
+/* Receipt review fits both a phone camera workflow and desktop uploads. */
+.receipt-scan-dialog { width: min(100% - 24px, 520px); max-height: calc(100dvh - 32px); overflow-y: auto; overscroll-behavior: contain; background: var(--surface-strong, #fff); color: var(--text, #183b3a); padding: 22px; border: 1px solid var(--border, #e6ded1); border-radius: 24px; display: grid; gap: 16px; margin: auto; }
+.receipt-scan-dialog label { min-width: 0; display: grid; gap: 6px; font-size: 14px; }
+.receipt-scan-dialog input, .receipt-scan-dialog select { min-width: 0; width: 100%; }
+.receipt-scan-upload { position: relative; border: 1px dashed #78a48e; border-radius: 14px; min-height: 86px; place-content: center; justify-items: center; background: #edf5ef; cursor: pointer; padding: 12px; text-align: center; }
+.receipt-scan-upload input { position: absolute; inset: 0; opacity: 0; cursor: pointer; height: 100%; }
+.receipt-scan-upload:focus-within { outline: 2px solid #2f7d5b; outline-offset: 3px; }
+.receipt-scan-shortcut { width: 100%; min-height: 44px; color: #2f7d5b; font-weight: 700; border-top: 1px solid var(--border); margin-top: 6px; }
+@media (max-width: 600px) { .receipt-scan-dialog { padding: 18px; max-height: calc(100dvh - 20px); padding-bottom: max(18px, env(safe-area-inset-bottom)); } }
+

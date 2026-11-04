@@ -10,6 +10,7 @@ type Props = {
   date: string
   initialKind?: SimpleKind
   onClose: () => void
+  onScanReceipt?: () => void
   /** Receives integer cents, never a float. */
   onSubmit: (kind: SimpleKind, amountCents: number) => void
 }
@@ -17,7 +18,7 @@ type Props = {
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'del'] as const
 
 /** Amount first, on a keypad: the phone's only high-frequency write. */
-export function MobileAddSheet({ locale, currency, date, initialKind = 'bill', onClose, onSubmit }: Props) {
+export function MobileAddSheet({ locale, currency, date, initialKind = 'bill', onClose, onSubmit, onScanReceipt }: Props) {
   const [kind, setKind] = useState<SimpleKind>(initialKind)
   const [raw, setRaw] = useState('')
   const sheetRef = useRef<HTMLElement>(null)
@@ -74,6 +75,7 @@ export function MobileAddSheet({ locale, currency, date, initialKind = 'bill', o
         </button>
       </footer>
       <small className="mobile-add-date">Lands on {new Intl.DateTimeFormat(locale, { weekday: 'long', day: 'numeric', month: 'short' }).format(new Date(`${date}T12:00:00`))}</small>
+      {onScanReceipt ? <button type="button" className="receipt-scan-shortcut" onClick={onScanReceipt}>Scan receipt photo</button> : null}
     </section>
   </div>
 }
