@@ -27,6 +27,8 @@ for (const viewport of [
     await expect(page.getByText(/Safe to spend|Committed first|Then income/i)).toHaveCount(0)
     await expect(page.locator('.app-sidebar')).toHaveCount(0)
     await expect(page.getByRole('navigation', { name: 'Mobile navigation' })).toBeVisible()
+    await expect(page.getByRole('navigation', { name: 'Mobile navigation' }).getByRole('button', { name: 'Bills', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('navigation', { name: 'Mobile navigation' }).getByRole('button')).toHaveCount(4)
     await page.getByRole('button', { name: 'Planner' }).click()
     await expect(page.getByRole('region', { name: 'Mobile financial planner' })).toBeVisible()
     await expect(page.getByRole('tab', { name: 'Week' })).toHaveAttribute('aria-selected', 'true')

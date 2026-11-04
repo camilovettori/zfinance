@@ -26,7 +26,8 @@
 .mobile-planner { display: grid; width: min(100%, 680px); gap: 12px; margin: 0 auto; color: var(--text); }
 
 /* ---------- Bottom navigation: 4 tabs + centre Add ---------- */
-.mobile-nav[data-with-add='true'] { grid-template-columns: 1fr 1fr 64px 1fr 1fr; align-items: center; }
+.mobile-nav { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.mobile-nav[data-with-add='true'] { grid-template-columns: 1fr 1fr 64px 1fr; align-items: center; }
 .mobile-nav-add {
   display: grid;
   place-items: center;

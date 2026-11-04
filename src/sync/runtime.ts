@@ -29,6 +29,7 @@ let visibilityHandler: (() => void) | null = null
 let pendingRecovery: (() => void) | null = null
 
 const automaticSync = (reason: string) => {
+  if (activeSyncPromise && reason !== 'local change' && reason !== 'online') return
   void syncNow().catch((error) => console.error(`Automatic sync failed (${reason}); retry scheduled.`, error))
 }
 

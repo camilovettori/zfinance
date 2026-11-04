@@ -10,6 +10,7 @@ let snapshot: CloudSyncSnapshot = { status: 'local-only', message: 'Local only',
 const listeners = new Set<(value: CloudSyncSnapshot) => void>()
 
 export function publishSyncStatus(value: CloudSyncSnapshot) {
+  if (snapshot.status === value.status && snapshot.message === value.message && snapshot.pending === value.pending) return
   snapshot = value
   listeners.forEach((listener) => listener(value))
 }

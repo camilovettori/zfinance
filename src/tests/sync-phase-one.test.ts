@@ -337,6 +337,37 @@ describe('pull and Realtime reconciliation', () => {
 })
 
 describe('financial invariants at the sync boundary', () => {
+  it('does not repaint or roll back a confirmed balance for duplicate and older remote versions', async () => {
+    const changed = vi.fn()
+    const target = new SyncCoordinator(db, provider, {
+      load: async () => value,
+      save: async (next) => { value = next; return next }, changed,
+    }, value.household.id, 'local-device')
+    const account = value.accounts[0]
+    const latest = remote('financial_accounts', { ...account, openingBalanceCents: 812194 }, 5)
+    provider.rows.set(`financial_accounts:${account.id}`, latest)
+    await target.pull()
+    const confirmed = value.accounts[0].currentBalanceCents
+    await target.pull()
+    provider.rows.set(`financial_accounts:${account.id}`, remote('financial_accounts', { ...account, openingBalanceCents: 100 }, 4))
+    await target.pull()
+    expect(changed).toHaveBeenCalledTimes(1)
+    expect(value.accounts[0].currentBalanceCents).toBe(confirmed)
+    expect((await db.entitySyncMetadata.get(`financial_accounts:${account.id}`))?.version).toBe(5)
+    target.stop()
+  })
+
+  it('serializes a realtime burst so an older event cannot overwrite a newer balance', async () => {
+    await coordinator.startRealtime()
+    const account = value.accounts[0]
+    provider.emit(remote('financial_accounts', { ...account, openingBalanceCents: 812194 }, 5))
+    provider.emit(remote('financial_accounts', { ...account, openingBalanceCents: 100 }, 4))
+    // A subsequent pull waits for the entire realtime burst to finish.
+    await coordinator.pull()
+    expect(value.accounts[0].openingBalanceCents).toBe(812194)
+    expect((await db.entitySyncMetadata.get(`financial_accounts:${account.id}`))?.version).toBe(5)
+  })
+
   it('preserves integer cents and YYYY-MM-DD dates', () => {
     const item = value.transactions[0]
     const next = applyRemoteEntity(value, remote('transactions', { ...item, amountCents: 3799, transactionDate: '2026-08-13' }, 2))

@@ -1,14 +1,11 @@
 import { useRef, useState } from 'react'
 import { useDialogAccessibility } from '@/lib/use-dialog-accessibility'
-import { CalendarRange, ChartNoAxesCombined, Menu, Plus, ReceiptText } from 'lucide-react'
+import { CalendarRange, ChartNoAxesCombined, Menu, Plus } from 'lucide-react'
 import { SECTION_ITEMS, type SectionKey } from './sections'
 
 const primary: Array<{ key: SectionKey; label: string; icon: typeof CalendarRange }> = [
   { key: 'dashboard', label: 'Home', icon: ChartNoAxesCombined },
   { key: 'planner', label: 'Planner', icon: CalendarRange },
-]
-const secondary: Array<{ key: SectionKey; label: string; icon: typeof CalendarRange }> = [
-  { key: 'bills', label: 'Bills', icon: ReceiptText },
 ]
 // Reports moves in here: it is a review task, not a daily one. Savings and
 // Settings stay where they were.
@@ -50,7 +47,6 @@ export function MobileBottomNavigation({ activeSection, onNavigate, onAdd }: Pro
       {onAdd ? <button className="mobile-nav-add" onClick={() => { setMoreOpen(false); onAdd() }} aria-label="Add income or bill">
         <Plus size={24} strokeWidth={2.6} aria-hidden="true" />
       </button> : null}
-      {secondary.map(tab)}
       <button
         data-active={moreKeys.includes(activeSection)}
         aria-expanded={moreOpen}

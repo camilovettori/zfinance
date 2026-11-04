@@ -341,6 +341,11 @@ describe('HomeCoin app shell', () => {
 
     await waitFor(() => expect(authMocks.restoreActiveSyncRuntime).toHaveBeenCalledOnce())
     expect(screen.queryByRole('heading', { name: 'Settings' })).toBeNull()
+    const authChanged = authMocks.onAuthStateChange.mock.calls[0][0]
+    await act(async () => {
+      authChanged('TOKEN_REFRESHED', { ...fakeSession, access_token: 'renewed-token' })
+    })
+    expect(authMocks.restoreActiveSyncRuntime).toHaveBeenCalledOnce()
   })
 
   it('keeps Tauri local-only without restoring a cloud runtime', async () => {
@@ -387,9 +392,9 @@ describe('HomeCoin app shell', () => {
 
     expect(container.querySelector('.app-sidebar')).toBeNull()
     const navigation = screen.getByRole('navigation', { name: 'Mobile navigation' })
-    expect(within(navigation).getAllByRole('button')).toHaveLength(5)
+    expect(within(navigation).getAllByRole('button')).toHaveLength(4)
     expect(within(navigation).getByRole('button', { name: 'Planner' })).toBeTruthy()
-    expect(within(navigation).getByRole('button', { name: 'Bills' })).toBeTruthy()
+    expect(within(navigation).queryByRole('button', { name: 'Bills' })).toBeNull()
     expect(within(navigation).getByRole('button', { name: 'Add income or bill' })).toBeTruthy()
     await user.click(within(navigation).getByRole('button', { name: 'More sections' }))
     expect(screen.getByRole('button', { name: 'This Week' })).toBeTruthy()

@@ -47,6 +47,7 @@ export class SyncCoordinator {
   private queuePromise: Promise<void> | null = null
   private syncPromise: Promise<void> | null = null
   private syncRequested = false
+  private stateUpdates: Promise<void> = Promise.resolve()
   private unsubscribeRealtime: (() => void) | null = null
   private retryTimer: ReturnType<typeof setTimeout> | null = null
   private readonly db: HomeCoinWebDatabase
@@ -385,13 +386,24 @@ export class SyncCoordinator {
     })
   }
 
-  async pull() {
+  private serializeStateUpdate(action: () => Promise<void>) {
+    const update = this.stateUpdates.then(action)
+    this.stateUpdates = update.catch(() => undefined)
+    return update
+  }
+
+  pull() {
+    return this.serializeStateUpdate(() => this.pullNow())
+  }
+
+  private async pullNow() {
     const cursorKey = `${CURSOR_KEY}:${this.householdId}`
     const cursorRecord = await this.db.metadata.get(cursorKey)
     const cursor = typeof cursorRecord?.value === 'string' ? cursorRecord.value : undefined
     const result = await this.provider.pull(cursor)
     let local = await this.state.load()
     if (!local) return
+    let changed = false
     for (const remote of result.changes) {
       const entityType = remoteEntityType(remote)
       const pending = await this.queue.pendingForEntity(entityType, remote.id, this.householdId)
@@ -401,12 +413,15 @@ export class SyncCoordinator {
         continue
       }
       const metadata = await this.db.entitySyncMetadata.get(entityKey(entityType, remote.id))
-      if (remote.deviceId === this.deviceId && metadata?.version === remote.version) continue
+      if (metadata && metadata.version >= remote.version) continue
       local = applyRemoteEntity(local, remote)
+      changed = true
       await this.storeRemoteMetadata(remote)
     }
-    const saved = await this.state.save(ensureCalculatedState(local))
-    this.state.changed?.(saved)
+    if (changed) {
+      const saved = await this.state.save(ensureCalculatedState(local))
+      this.state.changed?.(saved)
+    }
     if (result.cursor) await this.db.metadata.put({ key: cursorKey, value: result.cursor, updatedAt: new Date().toISOString() })
   }
 
@@ -414,14 +429,21 @@ export class SyncCoordinator {
     if (!this.provider.subscribe || this.unsubscribeRealtime) return
     this.unsubscribeRealtime = await this.provider.subscribe((event) => {
       const remote = event as RemoteEntity
-      void this.applyRealtime(remote)
+      void this.applyRealtime(remote).catch((error) => {
+        publishSyncStatus({ status: 'error', message: 'Sync error', pending: 0 })
+        console.error('Realtime update failed; the next pull will retry.', error)
+      })
     })
   }
 
-  private async applyRealtime(remote: RemoteEntity) {
+  private applyRealtime(remote: RemoteEntity) {
+    return this.serializeStateUpdate(() => this.applyRealtimeNow(remote))
+  }
+
+  private async applyRealtimeNow(remote: RemoteEntity) {
     const entityType = remoteEntityType(remote)
     const metadata = await this.db.entitySyncMetadata.get(entityKey(entityType, remote.id))
-    if (remote.deviceId === this.deviceId && metadata?.version === remote.version) return
+    if (metadata && metadata.version >= remote.version) return
     const pending = await this.queue.pendingForEntity(entityType, remote.id, this.householdId)
     if (pending.length) {
       if (remote.version > pending[0].baseVersion) {

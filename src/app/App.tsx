@@ -709,16 +709,14 @@ function App() {
 
   useEffect(() => {
     registerSyncedStateListener((syncedState) => {
-      stateRef.current = syncedState
-      setState(syncedState)
       // Apply the same explicit update after a cloud pull so an older remote
       // weekly rule cannot restore the superseded salary or Thursday week start.
       const updatedPlan = applyRequestedCamiloUpdates(syncedState)
+      const displayState = updatedPlan === syncedState ? syncedState : ensureCalculatedState(updatedPlan)
+      stateRef.current = displayState
+      setState(displayState)
       if (updatedPlan !== syncedState) {
         void saveState(ensureCalculatedState(updatedPlan)).then(async (saved) => {
-          stateRef.current = saved
-          setState(saved)
-          setPlannerCycleOverride(null)
           await enqueueSyncChanges(syncedState, saved)
         }).catch((error) => console.error('Failed to save the requested Camilo plan update.', error))
       }
@@ -745,9 +743,11 @@ function App() {
     }
   }, [])
 
+  const authUserId = authSession?.user.id
+  const authResolved = authSession !== undefined
   useEffect(() => {
-    if (!syncConfiguration.enabled || isDesktopRuntime() || loading || authSession === undefined || pendingInviteToken) return
-    if (!authSession) {
+    if (!syncConfiguration.enabled || isDesktopRuntime() || loading || !authResolved || pendingInviteToken) return
+    if (!authUserId) {
       deactivateSyncRuntime()
       return
     }
@@ -762,7 +762,7 @@ function App() {
         pendingPlanUpdateRef.current = null
       }
     }).catch((error) => console.error('Failed to restore the active shared household.', error))
-  }, [authSession, loading, pendingInviteToken])
+  }, [authUserId, authResolved, loading, pendingInviteToken])
 
   useEffect(() => () => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
