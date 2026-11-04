@@ -22,6 +22,11 @@ for (const viewport of [
   test(`mobile shell and Planner fit ${viewport.width}x${viewport.height}`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport)
     await loadSampleHousehold(page)
+    await expect(page.locator('.app-topbar')).not.toContainText('Dashboard')
+    await expect(page.locator('.app-topbar')).not.toContainText('Our Home')
+    await expect(page.locator('.app-topbar').getByRole('img', { name: 'HomeCoin' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Hide money values' })).toBeVisible()
+    if (viewport.width === 390) await page.screenshot({ path: testInfo.outputPath('home-brand-mobile.png') })
     await expect(page.getByText('Available now')).toBeVisible()
     await expect(page.getByText('After tomorrow')).toBeVisible()
     await expect(page.getByText(/Safe to spend|Committed first|Then income/i)).toHaveCount(0)

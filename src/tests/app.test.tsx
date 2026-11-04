@@ -276,7 +276,7 @@ describe('HomeCoin app shell', () => {
     expect(await screen.findByRole('heading', { name: 'Sign in to continue' })).toBeTruthy()
     expect(await screen.findByRole('button', { name: 'Log in' })).toBeTruthy()
     expect(container.querySelector('.sync-panel')).toBeTruthy()
-    expect(screen.queryByRole('heading', { name: /^Good (morning|afternoon|evening), / })).toBeNull()
+    expect(screen.queryByRole('heading', { name: /^Good (morning|afternoon|evening)/ })).toBeNull()
   })
 
   it('preserves an invitation through login and opens its remote household before onboarding', async () => {
@@ -326,7 +326,7 @@ describe('HomeCoin app shell', () => {
     })
     await user.click(screen.getByRole('button', { name: 'Accept invitation' }))
 
-    expect(await screen.findByRole('heading', { name: /^Good (morning|afternoon|evening), / })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: /^Good (morning|afternoon|evening)/ })).toBeTruthy()
     expect(authMocks.acceptInvite).toHaveBeenCalledWith(token)
     expect(authMocks.activateSyncRuntime).toHaveBeenCalledWith({}, remoteSnapshot.household.id, { openRemoteIfNeeded: true })
     expect(authMocks.uploadLocalState).not.toHaveBeenCalled()
@@ -361,7 +361,7 @@ describe('HomeCoin app shell', () => {
     authMocks.getSupabaseClient.mockReturnValue({})
     render(<App />)
 
-    await screen.findByRole('heading', { name: /^Good (morning|afternoon|evening), Our Home$/ })
+    await screen.findByRole('heading', { name: /^Good (morning|afternoon|evening)$/ })
     expect(authMocks.restoreActiveSyncRuntime).not.toHaveBeenCalled()
     expect(screen.queryByRole('heading', { name: 'Accept invitation' })).toBeNull()
     Reflect.deleteProperty(window, '__TAURI_INTERNALS__')
@@ -371,7 +371,7 @@ describe('HomeCoin app shell', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    expect(await screen.findByRole('heading', { name: /^Good (morning|afternoon|evening), Our Home$/ })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: /^Good (morning|afternoon|evening)$/ })).toBeTruthy()
     expect(screen.getByText('This week after bills')).toBeTruthy()
     expect(screen.getByRole('heading', { name: 'Cash flow' })).toBeTruthy()
 

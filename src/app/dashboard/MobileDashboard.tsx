@@ -58,7 +58,7 @@ export function MobileDashboard({
 
   return <section className="mobile-dashboard" aria-label="Mobile household dashboard">
     <header className="mobile-dashboard-header">
-      <div><p>HomeCoin</p><h1>{state.household.name}</h1></div>
+      <div><p>Your daily overview</p><h1>Your money, at a glance</h1></div>
       <time dateTime={model.todayIso}>
         {new Intl.DateTimeFormat(state.settings.locale, { weekday: 'short', day: 'numeric', month: 'short' }).format(fromIsoDate(model.todayIso))}
       </time>

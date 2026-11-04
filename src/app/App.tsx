@@ -59,6 +59,7 @@ import {
 } from '@/domain/home'
 import { ensureCalculatedState } from '@/domain/calculations'
 import { applyRequestedCamiloUpdates } from '@/domain/camilo-plan'
+import { HomeCoinBrand } from '@/components/HomeCoinBrand'
 import { buildRollingBalanceProjection, currentSpendableBalance } from '@/domain/cashflow'
 import { cleanupOneOffRecurringDuplicates, isSamePlannedEntry, isSameRecurringEntry } from '@/domain/deduplication'
 import { buildMonthlyBillsReport, formatMonthlyBillReportDate } from '@/domain/monthly-bills-report'
@@ -2559,7 +2560,7 @@ function App() {
   const dashboardView = (
     <section className="dashboard-page">
       <div className="dashboard-greeting">
-        <div><p className="eyebrow">Household overview</p><h1>{greeting}, {state.household.name}</h1></div>
+        <div><p className="eyebrow">Your money, at a glance</p><h1>{greeting}</h1></div>
         <time dateTime={todayIso()}>{todayLabel}</time>
       </div>
 
@@ -3471,7 +3472,7 @@ function App() {
     <div className={`app-shell${sidebarCollapsed && !mobileLayout ? ' sidebar-collapsed' : ''}`}>
       {!mobileLayout && !sidebarCollapsed ? <aside id="desktop-sidebar" className="app-sidebar print-hide">
         <button className="sidebar-toggle" aria-label="Hide sidebar" aria-expanded="true" aria-controls="desktop-sidebar" title="Hide menu" onClick={() => setSidebarCollapsed(true)}><ChevronLeft size={18} aria-hidden="true" /></button>
-        <div className="brand-mark"><span><House size={22} /></span><div><strong>HomeCoin</strong><small>Household finance</small></div></div>
+        <HomeCoinBrand />
         <DesktopNavigation activeSection={activeSection} onNavigate={setActiveSection} />
         <div className="sidebar-footer">
           <p>{new Intl.DateTimeFormat(state.settings.locale, { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}</p>
@@ -3483,10 +3484,7 @@ function App() {
       <div className="app-content">
         <header className="app-topbar print-hide">
           <div className="topbar-heading">
-            <div>
-            <strong>{SECTION_ITEMS.find((item) => item.key === activeSection)?.label}</strong>
-            <span>{state.household.name}</span>
-            </div>
+            {activeSection === 'dashboard' ? <HomeCoinBrand /> : <strong>{SECTION_ITEMS.find((item) => item.key === activeSection)?.label}</strong>}
           </div>
           <div className="flex items-center gap-2">
             <Button variant="ghost" onClick={togglePrivacy} aria-label={visiblePrivacy ? 'Show money values' : 'Hide money values'}>
